@@ -106,4 +106,26 @@ export async function getRememberedViewsBySource(
   return null;
 }
 
+export async function getRememberedIssueFilter(): Promise<{
+  term: string;
+  mode: 'simple' | 'regex';
+} | null> {
+  try {
+    return await localForage.getItem('issueFilter');
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function setRememberedIssueFilter(
+  term: string,
+  mode: 'simple' | 'regex',
+): Promise<void> {
+  try {
+    await localForage.setItem('issueFilter', { term, mode });
+  } catch (error) {
+    // Silently fail - not critical
+  }
+}
+
 export default localForage;

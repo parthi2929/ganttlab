@@ -17,8 +17,14 @@ export default {
   },
   props: ['tasks'],
   watch: {
-    tasks: function (value) {
-      if (value && value.length) this.refreshChart();
+    tasks: {
+      handler: function (newTasks, oldTasks) {
+        // Always refresh the chart when tasks change, even if empty
+        // This ensures proper clearing when filter results in no matches
+        this.refreshChart();
+      },
+      immediate: false,
+      deep: false,
     },
   },
   methods: {
@@ -627,6 +633,15 @@ export default {
       return chart;
     },
     refreshChart: function () {
+      // Clear the chart container first to ensure clean re-render
+      d3.select('#legacyChart').selectAll('*').remove();
+
+      // Handle empty or undefined tasks
+      if (!this.tasks || this.tasks.length === 0) {
+        this.convertedTasks = [];
+        return; // Don't render chart if no tasks
+      }
+
       this.convertedTasks = getConvertedTasks(this.tasks);
 
       // removing all created taskTooltips to avoid useless scrolling
@@ -648,8 +663,8 @@ export default {
     },
   },
   mounted: function () {
-    // refresh the gantt graph
-    if (this.tasks && this.tasks.length) this.refreshChart();
+    // Always refresh the chart on mount to handle initial state properly
+    this.refreshChart();
   },
 };
 </script>

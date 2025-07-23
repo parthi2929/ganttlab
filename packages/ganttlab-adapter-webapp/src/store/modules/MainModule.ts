@@ -6,6 +6,7 @@ import {
   Credentials,
   AuthenticatableSource,
   SourceVisitor,
+  Task,
 } from 'ganttlab-entities';
 import { DisplayableError } from '../../helpers/DisplayableError';
 
@@ -26,6 +27,10 @@ export default class MainModule extends VuexModule {
   public sourceGateway: Source | AuthenticatableSource | null = null;
   public viewGateway: SourceVisitor<unknown> | null = null;
   public chart: string | null = null;
+
+  // Issue Filter State
+  public issueFilterTerm = '';
+  public issueFilterMode: 'simple' | 'regex' = 'simple';
 
   @Mutation
   public setRemember(remember: boolean) {
@@ -121,6 +126,16 @@ export default class MainModule extends VuexModule {
   @Mutation
   public setChart(chart: string) {
     this.chart = chart;
+  }
+
+  @Mutation
+  public setIssueFilterTerm(term: string) {
+    this.issueFilterTerm = term;
+  }
+
+  @Mutation
+  public setIssueFilterMode(mode: 'simple' | 'regex') {
+    this.issueFilterMode = mode;
   }
 
   @Action({ commit: 'setCredentialsBySource' })

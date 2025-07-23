@@ -1,10 +1,6 @@
 <template>
   <div class="w-full">
-    <component
-      v-if="chart && tasks.length"
-      :is="chartComponent"
-      :tasks="tasks"
-    />
+    <component v-if="chart" :is="chartComponent" :tasks="tasks" />
   </div>
 </template>
 

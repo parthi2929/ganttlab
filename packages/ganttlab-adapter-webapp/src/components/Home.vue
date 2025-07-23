@@ -112,6 +112,10 @@
               <p class="flex-grow text-lg text-lead-300">Opened issues</p>
             </div>
           </div>
+          <IssueFilter
+            :totalCount="originalTasksCount"
+            :visibleCount="filteredTasksCount"
+          />
           <div class="h-full w-48 p-3 border-l border-lead-500">
             <p class="pb-2 text-xs tracking-wider text-lead-300">CHART</p>
             <div class="flex items-center px-2 text-lead-100">
@@ -143,11 +147,29 @@
             @set-tasks-page="setTasksPage($event)"
           />
         </div>
-        <div v-else-if="paginatedTasks && paginatedTasks.list.length">
+        <div v-else-if="paginatedTasks">
           <TasksDisplay
+            :key="`tasks-${issueFilterTerm}-${issueFilterMode}-${filteredTasksCount}`"
             :paginatedTasks="paginatedTasks"
             @set-tasks-page="setTasksPage($event)"
           />
+          <!-- Show message when filter results in no matches -->
+          <div
+            v-if="
+              paginatedTasks.list.length === 0 && issueFilterTerm.length > 0
+            "
+            class="w-full p-8 text-center"
+          >
+            <p class="text-gray-600">
+              No issues match your search filter: "<strong>{{
+                issueFilterTerm
+              }}</strong
+              >"
+            </p>
+            <p class="text-sm text-gray-500 mt-2">
+              Try adjusting your search term or clearing the filter.
+            </p>
+          </div>
         </div>
         <div v-else class="w-full p-16">
           <NoData
@@ -162,7 +184,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Vue } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-property-decorator';
 import { getModule } from 'vuex-module-decorators';
 import MainModule from '../store/modules/MainModule';
 import Icon from './generic/Icon.vue';
@@ -171,6 +193,7 @@ import Spinner from './generic/Spinner.vue';
 import TasksDisplay from './displays/TasksDisplay.vue';
 import MilestonesDisplay from './displays/MilestonesDisplay.vue';
 import NoData from './gateways/views/NoData.vue';
+import IssueFilter from './generic/IssueFilter.vue';
 import {
   User,
   Source,
@@ -184,8 +207,13 @@ import { ImplementedSourcesGateways } from '../helpers/ImplementedSourcesGateway
 import { DisplayableError } from '../helpers/DisplayableError';
 import { addDisplaybleError } from '../helpers';
 import { TasksAndMilestones } from 'ganttlab-use-cases';
-import LocalForage, { getRememberedViews } from '../helpers/LocalForage';
+import LocalForage, {
+  getRememberedViews,
+  getRememberedIssueFilter,
+  setRememberedIssueFilter,
+} from '../helpers/LocalForage';
 import { trackVirtualpageView, trackInteractionEvent } from '../helpers/GTM';
+import { filterTasks, FilterResult } from '../helpers/IssueFilterHelper';
 
 const mainState = getModule(MainModule);
 
@@ -197,11 +225,13 @@ const mainState = getModule(MainModule);
     TasksDisplay,
     MilestonesDisplay,
     NoData,
+    IssueFilter,
   },
 })
 export default class Home extends Vue {
   public paginatedTasks: PaginatedListOfTasks | null = null;
   public paginatedMilestones: PaginatedListOfMilestones | null = null;
+  private originalPaginatedTasks: PaginatedListOfTasks | null = null;
 
   setTasksPage(page: number) {
     mainState.setViewGatewayTasksPage(page);
@@ -237,6 +267,22 @@ export default class Home extends Vue {
 
   get user(): User | null {
     return mainState.user;
+  }
+
+  get originalTasksCount(): number {
+    return this.originalPaginatedTasks?.list.length || 0;
+  }
+
+  get filteredTasksCount(): number {
+    return this.paginatedTasks?.list.length || 0;
+  }
+
+  get issueFilterTerm(): string {
+    return mainState.issueFilterTerm || '';
+  }
+
+  get issueFilterMode(): 'simple' | 'regex' {
+    return mainState.issueFilterMode || 'simple';
   }
 
   // source gateway is stored in vuex store
@@ -305,17 +351,20 @@ export default class Home extends Vue {
     // clear data so we get the spinner back while loading the new ones
     this.paginatedTasks = null;
     this.paginatedMilestones = null;
+    this.originalPaginatedTasks = null;
     // get the view data
     try {
       const data = await this.sourceGateway.getDataFor(view);
       if (data instanceof PaginatedListOfTasks) {
-        this.paginatedTasks = data;
+        this.originalPaginatedTasks = data;
+        this.applyIssueFilter();
       }
       if (data instanceof PaginatedListOfMilestones) {
         this.paginatedMilestones = data;
       }
       if (data instanceof TasksAndMilestones) {
-        this.paginatedTasks = data.tasks;
+        this.originalPaginatedTasks = data.tasks;
+        this.applyIssueFilter();
         this.paginatedMilestones = data.milestones;
       }
       trackVirtualpageView(
@@ -327,7 +376,8 @@ export default class Home extends Vue {
         new DisplayableError(error, 'Unable to get view data'),
       );
       trackInteractionEvent('View', 'Error', view.slug);
-      this.paginatedTasks = new PaginatedListOfTasks([], 1, 0);
+      this.originalPaginatedTasks = new PaginatedListOfTasks([], 1, 0);
+      this.applyIssueFilter();
     }
 
     // user okay to remember? let's do it!
@@ -359,6 +409,48 @@ export default class Home extends Vue {
       'Logged out',
       this.sourceGateway ? this.sourceGateway.slug : undefined,
     );
+  }
+
+  @Watch('issueFilterTerm')
+  @Watch('issueFilterMode')
+  onFilterChange() {
+    this.applyIssueFilter();
+    // Persist filter state in session (FR-6: session persistence)
+    setRememberedIssueFilter(this.issueFilterTerm, this.issueFilterMode);
+  }
+
+  applyIssueFilter() {
+    if (!this.originalPaginatedTasks) {
+      this.paginatedTasks = null;
+      return;
+    }
+
+    const filterResult = filterTasks(
+      this.originalPaginatedTasks.list,
+      this.issueFilterTerm,
+      this.issueFilterMode,
+    );
+
+    // Create new PaginatedListOfTasks with filtered results
+    // Preserve the original pagination metadata but update the list
+    this.paginatedTasks = new PaginatedListOfTasks(
+      filterResult.filteredTasks,
+      this.originalPaginatedTasks.page,
+      this.originalPaginatedTasks.pageSize,
+      this.originalPaginatedTasks.previousPage,
+      this.originalPaginatedTasks.nextPage,
+      this.originalPaginatedTasks.lastPage,
+      this.originalPaginatedTasks.total,
+    );
+  }
+
+  async mounted() {
+    // Restore filter state from session storage
+    const rememberedFilter = await getRememberedIssueFilter();
+    if (rememberedFilter) {
+      mainState.setIssueFilterTerm(rememberedFilter.term);
+      mainState.setIssueFilterMode(rememberedFilter.mode);
+    }
   }
 
   goToWebsite() {
