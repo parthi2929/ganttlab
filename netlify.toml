@@ -9,6 +9,8 @@
   publish = "packages/ganttlab-adapter-webapp/dist"
 
 [build.environment]
+  # Force Netlify to use Node 16 LTS for the build (avoids the OpenSSL issue on Node 17+)
+  NODE_VERSION = "16"
   # If you upgrade to Node 18+ and encounter OpenSSL issues, this keeps builds working
   NODE_OPTIONS = "--openssl-legacy-provider"
   # Ensure NPM installs even when peer-dependency conflicts arise (this project needs it)
