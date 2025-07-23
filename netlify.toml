@@ -1,0 +1,19 @@
+# Netlify configuration for GanttLab monorepo
+
+[build]
+  # Builds the Vue webapp located in packages/ganttlab-adapter-webapp
+  command = "npm run build:webapp"
+  # Directory to publish (the Vue CLI dist folder)
+  publish = "packages/ganttlab-adapter-webapp/dist"
+  # Use an LTS Node version that avoids the OpenSSL workaround
+  node_version = "16"
+
+[build.environment]
+  # If you upgrade to Node 18+ and encounter OpenSSL issues, uncomment the next line.
+  # NODE_OPTIONS = "--openssl-legacy-provider"
+
+# Handle client-side routing for the SPA
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200 
