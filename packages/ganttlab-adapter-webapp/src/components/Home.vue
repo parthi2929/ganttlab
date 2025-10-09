@@ -17,28 +17,29 @@
 
         <div class="flex-grow flex items-center justify-center">
           <a
-            class="flex items-center"
+            class="flex items-center truncate"
             :href="sourceUrl"
             target="_blank"
             rel="noopener noreferrer"
             @click="goToSource"
           >
-            <div class="mr-2">
+            <div class="mr-2 flex-shrink-0">
               <Icon size="24" :name="sourceLogoIcon" />
             </div>
-            <p>{{ sourceUrl }}</p>
+            <p class="truncate">{{ sourceUrl }}</p>
           </a>
           <a
             v-if="project"
             :href="project.url"
             target="_blank"
             rel="noopener noreferrer"
-            class="flex items-center justify-start ml-12 img-reset-opacity"
+            class="flex items-center flex-shrink-0 ml-12 max-w-xs img-reset-opacity"
             @click="goToProject"
           >
             <img
               v-if="project.avatarUrl"
               :src="project.avatarUrl"
+              v-fallback-src="'project'"
               :alt="project.path"
               class="flex-shrink-0 w-6 h-6 mr-2 rounded bg-white shadow"
             />
@@ -48,7 +49,30 @@
             >
               <Icon size="16" name="cube-outline" />
             </div>
-            <p>{{ project.path }}</p>
+            <p class="truncate">{{ project.path }}</p>
+          </a>
+          <a
+            v-else-if="group"
+            :href="group.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center flex-shrink-0 ml-12 max-w-xs img-reset-opacity"
+            @click="goToGroup"
+          >
+            <img
+              v-if="group.avatarUrl"
+              :src="group.avatarUrl"
+              v-fallback-src="'project'"
+              :alt="group.path"
+              class="flex-shrink-0 w-6 h-6 mr-2 rounded bg-white shadow"
+            />
+            <div
+              v-else
+              class="flex-shrink-0 w-6 h-6 px-1 mr-2 rounded bg-gray-300 text-gray-500"
+            >
+              <Icon size="16" name="folder-outline" />
+            </div>
+            <p class="truncate">{{ group.path }}</p>
           </a>
         </div>
         <div class="w-64 flex items-center justify-end">
@@ -62,6 +86,7 @@
             <p>{{ user.username }}</p>
             <img
               :src="user.avatarUrl"
+              v-fallback-src="'person'"
               :alt="user.username"
               class="w-6 ml-2 inline-block rounded-full shadow-inner"
             />
@@ -202,6 +227,7 @@ import {
   PaginatedListOfTasks,
   PaginatedListOfMilestones,
   Project,
+  Group,
 } from 'ganttlab-entities';
 import { ImplementedSourcesGateways } from '../helpers/ImplementedSourcesGateways';
 import { DisplayableError } from '../helpers/DisplayableError';
@@ -329,6 +355,14 @@ export default class Home extends Vue {
   get project(): Project | null {
     if (this.viewGateway && this.viewGateway.configuration.project) {
       return this.viewGateway.configuration.project;
+    }
+    return null;
+  }
+
+  // there might be a group in the view gateway configuration
+  get group(): Group | null {
+    if (this.viewGateway && this.viewGateway.configuration.group) {
+      return this.viewGateway.configuration.group;
     }
     return null;
   }
@@ -467,6 +501,10 @@ export default class Home extends Vue {
 
   goToProject() {
     trackInteractionEvent('Click', 'Project');
+  }
+
+  goToGroup() {
+    trackInteractionEvent('Click', 'Group');
   }
 
   goToUser() {

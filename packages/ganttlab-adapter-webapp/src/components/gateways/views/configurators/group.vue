@@ -3,16 +3,16 @@
     <GenericAutocomplete
       :search="search"
       :loading="loading"
-      :results="projects"
+      :results="groups"
       :focus="true"
-      @search="searchProjects"
-      @select-result="setProject"
+      @search="searchGroups"
+      @select-result="setGroup"
     >
       <p slot="label">
-        Search for a project directly, or in a group with a trailing slash
+        Search for a group
       </p>
       <template v-slot:no-result="slotProps">
-        <p>No project found while searching for</p>
+        <p>No group found while searching for</p>
         <p>
           «
           <span class="font-bold">{{ slotProps.searched }}</span> »
@@ -23,23 +23,12 @@
             class="font-bold"
             href="#"
             @click.prevent="
-              projects = null;
+              groups = null;
               search = 'ganttlab';
             "
             >ganttlab</a
           >
           »
-          <br />or directly in the «
-          <a
-            class="font-bold"
-            href="#"
-            @click.prevent="
-              projects = null;
-              search = 'ganttlab/';
-            "
-            >ganttlab/</a
-          >
-          » group
         </p>
       </template>
       <template v-slot:result="slotProps">
@@ -48,18 +37,18 @@
             v-if="slotProps.result.avatar_url"
             :src="slotProps.result.avatar_url"
             v-fallback-src="'project'"
-            :alt="slotProps.result.path_with_namespace"
+            :alt="slotProps.result.full_path"
             class="flex-shrink-0 w-12 h-12 mr-3 rounded bg-white shadow"
           />
           <div
             v-else
             class="flex-shrink-0 w-12 h-12 p-2 mr-3 rounded bg-gray-200 text-gray-600"
           >
-            <Icon size="32" name="cube-outline" />
+            <Icon size="32" name="folder-outline" />
           </div>
           <p class="flex-shrink truncate">
             <span class="font-bold">{{
-              slotProps.result.path_with_namespace
+              slotProps.result.full_path
             }}</span>
             <br />
             <span class="text-sm">{{ slotProps.result.description }}</span>
@@ -67,30 +56,18 @@
         </div>
       </template>
     </GenericAutocomplete>
-    <p class="mt-6 text-gray-600 text-center">
+    <p v-if="!group" class="mt-6 text-gray-600 text-center">
       As an example, search for «
       <a
         class="font-bold"
         href="#"
         @click.prevent="
-          projects = null;
+          groups = null;
           search = 'ganttlab';
         "
         >ganttlab</a
       >
-      » to find any
-      <br />project with that name, or «
-      <a
-        class="font-bold"
-        href="#"
-        @click.prevent="
-          projects = null;
-          search = 'ganttlab/';
-        "
-        >ganttlab/</a
-      >
-      » with a
-      <br />trailing slash to find projects in the ganttlab group
+      » to find the ganttlab group
     </p>
   </div>
 </template>
@@ -99,10 +76,10 @@
 import { Component, Vue, Emit, Prop } from 'vue-property-decorator';
 import GenericAutocomplete from '../../../generic/forms/Autocomplete.vue';
 import Icon from '../../../generic/Icon.vue';
-import { GitLabGateway, GitLabProject } from 'ganttlab-gateways';
+import { GitLabGateway, GitLabGroup } from 'ganttlab-gateways';
 import { DisplayableError } from '../../../../helpers/DisplayableError';
 import { addDisplaybleError } from '../../../../helpers';
-import { Project } from 'ganttlab-entities';
+import { Group } from 'ganttlab-entities';
 
 @Component({
   components: {
@@ -110,31 +87,31 @@ import { Project } from 'ganttlab-entities';
     Icon,
   },
 })
-export default class ProjectViewConfigurator extends Vue {
+export default class GroupViewConfigurator extends Vue {
   public search = '';
   public loading = false;
-  public projects: Array<GitLabProject> | null = null;
-  public project: GitLabProject | null = null;
+  public groups: Array<GitLabGroup> | null = null;
+  public group: GitLabGroup | null = null;
 
   @Prop({ required: true }) readonly sourceGateway!: GitLabGateway;
 
-  async searchProjects(newSearch: string) {
+  async searchGroups(newSearch: string) {
     this.search = newSearch;
     if (!newSearch) {
-      // empty search? empty projects!
-      this.projects = null;
+      // empty search? empty groups!
+      this.groups = null;
       return;
     }
-    if (this.project && newSearch === this.project.path_with_namespace) {
+    if (this.group && newSearch === this.group.full_path) {
       // same? do nothing!
       return;
     }
     try {
       this.loading = true;
-      this.projects = await this.sourceGateway.searchProjects(newSearch);
+      this.groups = await this.sourceGateway.searchGroups(newSearch);
       this.loading = false;
     } catch (error) {
-      this.projects = null;
+      this.groups = null;
       this.loading = false;
       addDisplaybleError(
         new DisplayableError(error, 'Error while searching for that'),
@@ -142,27 +119,27 @@ export default class ProjectViewConfigurator extends Vue {
     }
   }
 
-  setProject(project: GitLabProject) {
+  setGroup(group: GitLabGroup) {
     if (
-      this.project &&
-      this.project.path_with_namespace === project.path_with_namespace
+      this.group &&
+      this.group.full_path === group.full_path
     ) {
       // same? do nothing!
       return;
     }
-    this.project = project;
+    this.group = group;
     this.setConfiguration();
   }
 
   get configuration() {
-    if (this.project) {
+    if (this.group) {
       return {
-        project: new Project(
-          this.project.name,
-          this.project.path_with_namespace,
-          this.project.web_url,
-          this.project.description,
-          this.project.avatar_url,
+        group: new Group(
+          this.group.name,
+          this.group.full_path,
+          this.group.web_url,
+          this.group.description,
+          this.group.avatar_url,
         ),
         tasks: {
           page: 1,

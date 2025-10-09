@@ -3,6 +3,7 @@ import Vue from 'vue';
 import App from './App.vue';
 import store from './store';
 import './assets/tailwind.css';
+import './helpers/fallbackImageDirective';
 
 // set Moment.js locale and timezone
 moment.locale(
