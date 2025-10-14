@@ -1,4 +1,4 @@
-import Vue, { VNode } from 'vue';
+import Vue from 'vue';
 
 // A simple directive that replaces the image src with a fallback when the original fails to load.
 // Usage: v-fallback-src="fallbackUrl" or v-fallback-src="'person'" to use built-in fallbacks
@@ -8,16 +8,22 @@ const defaultFallback = '/images/fallback-person.svg';
 function mapFallback(value?: string): string {
   if (!value) return defaultFallback;
   // allow short names mapping to known fallback assets
-  if (value === 'person' || value === "user") return '/images/fallback-person.svg';
-  if (value === 'cube' || value === 'project') return '/images/fallback-cube.svg';
+  if (value === 'person' || value === 'user')
+    return '/images/fallback-person.svg';
+  if (value === 'cube' || value === 'project')
+    return '/images/fallback-cube.svg';
   // otherwise assume it's a URL/path provided by caller
   return value;
 }
 
+interface ImageElementWithHandler extends HTMLImageElement {
+  fallbackOnError?: () => void;
+}
+
 Vue.directive('fallback-src', {
-  bind(el: HTMLElement, binding: { value?: string }, vnode: VNode) {
-  const img = el as HTMLImageElement;
-  const fallback = mapFallback(binding && binding.value);
+  bind(el: HTMLElement, binding: { value?: string }) {
+    const img = el as ImageElementWithHandler;
+    const fallback = mapFallback(binding && binding.value);
 
     function onError() {
       if (img.getAttribute('data-fallback-applied')) return;
@@ -27,11 +33,11 @@ Vue.directive('fallback-src', {
 
     img.addEventListener('error', onError);
     // store the handler so it can be removed later if needed
-    (img as any).__fallback_on_error = onError;
+    img.fallbackOnError = onError;
   },
   unbind(el: HTMLElement) {
-    const img = el as HTMLImageElement;
-    const handler = (img as any).__fallback_on_error;
+    const img = el as ImageElementWithHandler;
+    const handler = img.fallbackOnError;
     if (handler) img.removeEventListener('error', handler);
   },
 });
