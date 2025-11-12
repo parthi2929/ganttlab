@@ -3,6 +3,7 @@ import { AxiosBackedAuthenticatableSource } from '../abstracts/AxiosBackedAuthen
 import { Credentials, User } from 'ganttlab-entities';
 import { GitLabUser } from './types/GitLabUser';
 import { GitLabProject } from './types/GitLabProject';
+import { GitLabGroup } from './types/GitLabGroup';
 
 export class GitLabGateway extends AxiosBackedAuthenticatableSource {
   public slug = 'gitlab';
@@ -65,5 +66,28 @@ export class GitLabGateway extends AxiosBackedAuthenticatableSource {
       );
     }
     return projectsList;
+  }
+
+  async searchGroups(search: string): Promise<GitLabGroup[]> {
+    const { data } = await this.safeAxiosRequest<Array<GitLabGroup>>({
+      method: 'GET',
+      url: '/groups',
+      params: {
+        search: search,
+      },
+    });
+    const groupsList: Array<GitLabGroup> = [];
+    for (const group of data) {
+      groupsList.push(
+        new GitLabGroup(
+          group.name,
+          group.full_path,
+          group.web_url,
+          group.description,
+          group.avatar_url,
+        ),
+      );
+    }
+    return groupsList;
   }
 }

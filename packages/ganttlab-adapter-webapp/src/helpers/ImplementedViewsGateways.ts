@@ -2,6 +2,7 @@ import { Configuration, SourceVisitor } from 'ganttlab-entities';
 import {
   ViewMine,
   ViewProject,
+  ViewGroup,
   ViewRepository,
   ViewMilestone,
 } from 'ganttlab-gateways';
@@ -30,6 +31,12 @@ export const ImplementedViewsGateways: Array<ViewGateway> = [
     slug: 'project',
     icon: 'cube-outline',
     instance: new ViewProject(),
+    defaultConfiguration: {},
+  },
+  {
+    slug: 'group',
+    icon: 'folder-outline',
+    instance: new ViewGroup(),
     defaultConfiguration: {},
   },
   {

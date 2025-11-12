@@ -34,6 +34,7 @@
           <img
             v-if="slotProps.result.owner.avatar_url"
             :src="slotProps.result.owner.avatar_url"
+            v-fallback-src="'project'"
             :alt="slotProps.result.full_name"
             class="flex-shrink-0 w-12 h-12 mr-3 rounded bg-white shadow"
           />

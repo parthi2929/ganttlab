@@ -1,0 +1,56 @@
+name: Build and Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:  # Allows manual execution
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build libraries
+        run: |
+          npm run build:lib:entities
+          npm run build:lib:use-cases
+          npm run build:lib:gateways
+
+      - name: Build webapp (set publicPath for GH Pages)
+        env:
+          # Extract only the repository name (e.g., 'ganttlab' from 'user/ganttlab')
+          VUE_APP_PUBLIC_PATH: /${{ github.event.repository.name }}/
+          # Workaround for OpenSSL/webpack on Node 17+ (ERR_OSSL_EVP_UNSUPPORTED)
+          NODE_OPTIONS: --openssl-legacy-provider
+        run: |
+          cd packages/ganttlab-adapter-webapp
+          npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ganttlab-build
+          path: packages/ganttlab-adapter-webapp/dist
+          retention-days: 7
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./packages/ganttlab-adapter-webapp/dist
+          publish_branch: gh-pages
+          cname: false  # Remove this line if you have a custom domain

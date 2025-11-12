@@ -10,6 +10,7 @@ export { Configuration } from './views/Configuration';
 export { View } from './views/View';
 export { SourceVisitor } from './views/SourceVisitor';
 export { ViewSourceStrategy } from './views/ViewSourceStrategy';
+export { Group } from './core/Group';
 export { Milestone } from './core/Milestone';
 export { Project } from './core/Project';
 export { Task } from './core/Task';
