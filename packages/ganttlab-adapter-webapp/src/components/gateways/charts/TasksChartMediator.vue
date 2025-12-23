@@ -1,13 +1,23 @@
 <template>
   <div class="w-full">
-    <component v-if="chart" :is="chartComponent" :tasks="tasks" />
+    <component 
+      v-if="chart" 
+      :is="chartComponent" 
+      :tasks="tasks"
+      :searchTerm="searchTerm"
+      :searchMode="searchMode"
+    />
   </div>
 </template>
 
 <script lang="ts">
 import { Component, Vue, Prop } from 'vue-property-decorator';
+import { getModule } from 'vuex-module-decorators';
+import MainModule from '../../../store/modules/MainModule';
 import legacyChart from '../../gateways/charts/legacy/Chart.vue';
 import { Task } from 'ganttlab-entities';
+
+const mainState = getModule(MainModule);
 
 @Component({
   components: {
@@ -20,6 +30,14 @@ export default class TasksChartMediator extends Vue {
 
   get chartComponent() {
     return `${this.chart}Chart`;
+  }
+
+  get searchTerm(): string {
+    return mainState.issueFilterTerm || '';
+  }
+
+  get searchMode(): 'simple' | 'regex' {
+    return mainState.issueFilterMode || 'simple';
   }
 }
 </script>

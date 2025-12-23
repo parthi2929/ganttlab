@@ -6,6 +6,8 @@ export * from './sources/gitlab/GitLabGateway';
 export * from './sources/gitlab/types/GitLabIssue';
 export * from './sources/gitlab/types/GitLabProject';
 export * from './sources/gitlab/types/GitLabUser';
+export * from './sources/gitlab/GitLabHierarchyService';
+export * from './sources/gitlab/helpers-hierarchy';
 export * from './views/mine/ViewMine';
 export * from './views/project/ViewProject';
 export * from './views/repository/ViewRepository';

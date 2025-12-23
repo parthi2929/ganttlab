@@ -6,7 +6,6 @@ import {
   Credentials,
   AuthenticatableSource,
   SourceVisitor,
-  Task,
 } from 'ganttlab-entities';
 import { DisplayableError } from '../../helpers/DisplayableError';
 
@@ -31,6 +30,9 @@ export default class MainModule extends VuexModule {
   // Issue Filter State
   public issueFilterTerm = '';
   public issueFilterMode: 'simple' | 'regex' = 'simple';
+
+  // Issue Hierarchy State
+  public issueHierarchyEnabled = true;
 
   @Mutation
   public setRemember(remember: boolean) {
@@ -136,6 +138,11 @@ export default class MainModule extends VuexModule {
   @Mutation
   public setIssueFilterMode(mode: 'simple' | 'regex') {
     this.issueFilterMode = mode;
+  }
+
+  @Mutation
+  public setIssueHierarchyEnabled(enabled: boolean) {
+    this.issueHierarchyEnabled = enabled;
   }
 
   @Action({ commit: 'setCredentialsBySource' })

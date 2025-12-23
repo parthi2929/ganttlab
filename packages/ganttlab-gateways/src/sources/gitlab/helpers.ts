@@ -8,7 +8,7 @@ export function getTaskFromGitLabIssue(gitlabIssue: GitLabIssue): Task {
   const { startDate, dueDate } = issueDescriptionToTaskDetails(
     gitlabIssue.description,
   );
-  return new Task(
+  const task = new Task(
     gitlabIssue.title,
     gitlabIssue.web_url,
     startDate
@@ -24,6 +24,29 @@ export function getTaskFromGitLabIssue(gitlabIssue: GitLabIssue): Task {
       ? new Date(gitlabIssue.milestone.due_date)
       : undefined,
   );
+
+  // Add hierarchy information
+  if (gitlabIssue.iid) {
+    task.iid = String(gitlabIssue.iid);
+  }
+
+  // Set issue type from GitLab API
+  // issue_type can be: 'issue', 'incident', 'test_case', or 'task'
+  const issueType = gitlabIssue.issue_type || gitlabIssue.type;
+  if (issueType === 'task') {
+    task.isGitLabTask = true;
+    task.isGitLabIssue = false;
+  } else {
+    task.isGitLabIssue = true;
+    task.isGitLabTask = false;
+  }
+
+  // If has_tasks is true, it has children (subtasks)
+  if (gitlabIssue.has_tasks) {
+    task.hasChildren = true;
+  }
+
+  return task;
 }
 
 export function getPaginationFromGitLabHeaders(

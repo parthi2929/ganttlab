@@ -10,6 +10,7 @@ import {
   getTaskFromGitLabIssue,
   getPaginationFromGitLabHeaders,
 } from '../../../sources/gitlab/helpers';
+import { enrichTasksWithHierarchy } from '../../../sources/gitlab/helpers-hierarchy';
 
 export class ViewProjectGitLabStrategy
   implements ViewSourceStrategy<PaginatedListOfTasks> {
@@ -37,6 +38,14 @@ export class ViewProjectGitLabStrategy
       const task = getTaskFromGitLabIssue(gitlabIssue);
       tasksList.push(task);
     }
+
+    // Enrich tasks with parent-child hierarchy information
+    await enrichTasksWithHierarchy(
+      source,
+      configuration.project.path as string,
+      tasksList,
+    );
+
     tasksList.sort((a: Task, b: Task) => {
       if (a.due && b.due) {
         return a.due.getTime() - b.due.getTime();

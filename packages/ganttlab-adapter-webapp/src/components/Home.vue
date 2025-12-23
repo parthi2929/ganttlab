@@ -202,6 +202,7 @@ import {
   PaginatedListOfTasks,
   PaginatedListOfMilestones,
   Project,
+  Task,
 } from 'ganttlab-entities';
 import { ImplementedSourcesGateways } from '../helpers/ImplementedSourcesGateways';
 import { DisplayableError } from '../helpers/DisplayableError';
@@ -213,7 +214,9 @@ import LocalForage, {
   setRememberedIssueFilter,
 } from '../helpers/LocalForage';
 import { trackVirtualpageView, trackInteractionEvent } from '../helpers/GTM';
-import { filterTasks, FilterResult } from '../helpers/IssueFilterHelper';
+import { filterTasks, filterTasksWithTree, FilterResult } from '../helpers/IssueFilterHelper';
+import { TreeBuilder } from '../helpers/TreeBuilder';
+import { treeHierarchyService } from '../helpers/TreeHierarchyService';
 
 const mainState = getModule(MainModule);
 
@@ -425,11 +428,42 @@ export default class Home extends Vue {
       return;
     }
 
-    const filterResult = filterTasks(
-      this.originalPaginatedTasks.list,
-      this.issueFilterTerm,
-      this.issueFilterMode,
-    );
+    console.log('=== applyIssueFilter START ===');
+    console.log('Original tasks count:', this.originalPaginatedTasks.list.length);
+
+    // Apply expansion state to tasks
+    TreeBuilder.applyExpansionState(this.originalPaginatedTasks.list);
+
+    // Build tree structure - links children to parents and returns only roots
+    const rootTasks = TreeBuilder.buildTree(this.originalPaginatedTasks.list);
+    console.log('Root tasks after buildTree:', rootTasks.length);
+
+    // Get visible tasks based on expansion state (includes expanded children)
+    const visibleTasks = TreeBuilder.getVisibleTasks(rootTasks);
+    console.log('Visible tasks:', visibleTasks.length);
+
+    // Use tree-aware filtering if feature is enabled
+    const useTreeFiltering = mainState.issueHierarchyEnabled !== false; // default to true
+
+    let filterResult: FilterResult;
+    if (useTreeFiltering && this.issueFilterTerm) {
+      // Tree-aware filtering (keeps ancestors if descendants match)
+      filterResult = filterTasksWithTree(
+        visibleTasks,
+        this.issueFilterTerm,
+        this.issueFilterMode,
+      );
+    } else {
+      // No filter or simple filtering - just use visible tasks
+      filterResult = {
+        filteredTasks: visibleTasks,
+        totalCount: visibleTasks.length,
+        visibleCount: visibleTasks.length,
+      };
+    }
+
+    console.log('Filtered tasks:', filterResult.filteredTasks.length);
+    console.log('=== applyIssueFilter END ===');
 
     // Create new PaginatedListOfTasks with filtered results
     // Preserve the original pagination metadata but update the list
@@ -444,6 +478,44 @@ export default class Home extends Vue {
     );
   }
 
+  handleToggleExpand(event: CustomEvent) {
+    const { iid } = event.detail;
+    if (!iid) return;
+
+    // Toggle expansion state
+    const isExpanded = treeHierarchyService.toggleExpansion(iid);
+
+    // Find the task and update its expansion state
+    if (this.originalPaginatedTasks) {
+      const task = this.originalPaginatedTasks.list.find((t) => t.iid === iid);
+      if (task) {
+        task.isExpanded = isExpanded;
+
+        // If expanding and children not loaded, fetch them
+        if (isExpanded && !task.children) {
+          this.fetchChildrenForTask(task);
+        } else {
+          // Just re-apply the filter to update visibility
+          this.applyIssueFilter();
+        }
+      }
+    }
+
+    // Track analytics
+    trackInteractionEvent(
+      'Tree',
+      isExpanded ? 'Expand' : 'Collapse',
+      iid,
+    );
+  }
+
+  async fetchChildrenForTask(task: Task) {
+    // TODO: Implement child fetching via GitLab API
+    // For now, we'll just use cached children if available
+    TreeBuilder.loadCachedChildren(task);
+    this.applyIssueFilter();
+  }
+
   async mounted() {
     // Restore filter state from session storage
     const rememberedFilter = await getRememberedIssueFilter();
@@ -451,6 +523,14 @@ export default class Home extends Vue {
       mainState.setIssueFilterTerm(rememberedFilter.term);
       mainState.setIssueFilterMode(rememberedFilter.mode);
     }
+
+    // Listen for tree expand/collapse events
+    document.addEventListener('toggle-expand', this.handleToggleExpand as EventListener);
+  }
+
+  beforeDestroy() {
+    // Clean up event listener
+    document.removeEventListener('toggle-expand', this.handleToggleExpand as EventListener);
   }
 
   goToWebsite() {

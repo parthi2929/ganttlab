@@ -6,6 +6,7 @@
   "license": "Apache-2.0",
   "scripts": {
     "serve": "vue-cli-service serve",
+    "serve:legacy": "node --openssl-legacy-provider ./node_modules/@vue/cli-service/bin/vue-cli-service.js serve",
     "build:lib": "echo 'no lib to build here'",
     "build": "vue-cli-service build",
     "lint": "vue-cli-service lint",

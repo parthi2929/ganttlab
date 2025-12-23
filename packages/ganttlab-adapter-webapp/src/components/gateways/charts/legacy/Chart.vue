@@ -15,10 +15,23 @@ export default {
       convertedTasks: [],
     };
   },
-  props: ['tasks'],
+  props: {
+    tasks: {
+      type: Array,
+      required: true,
+    },
+    searchTerm: {
+      type: String,
+      default: '',
+    },
+    searchMode: {
+      type: String,
+      default: 'simple',
+    },
+  },
   watch: {
     tasks: {
-      handler: function (newTasks, oldTasks) {
+      handler: function () {
         // Always refresh the chart when tasks change, even if empty
         // This ensures proper clearing when filter results in no matches
         this.refreshChart();
@@ -28,6 +41,20 @@ export default {
     },
   },
   methods: {
+    matchesSearch: function (title, searchTerm, mode) {
+      if (!searchTerm || !searchTerm.trim()) return false;
+
+      try {
+        if (mode === 'simple') {
+          return title.toLowerCase().includes(searchTerm.toLowerCase());
+        } else {
+          const regex = new RegExp(searchTerm, 'i');
+          return regex.test(title);
+        }
+      } catch {
+        return false;
+      }
+    },
     // thank you Florian Roscheck for this, you made an awesome work I only needed to tweak a little
     visavailChart: function () {
       // define chart layout
@@ -264,27 +291,131 @@ export default {
           svg.append('g').attr('id', 'g_axis');
           svg.append('g').attr('id', 'g_data');
 
-          // create y axis labels
-          svg
+          // create y axis labels with tree structure
+          const labelGroups = svg
             .select('#g_axis')
-            .selectAll('text')
+            .selectAll('g.label-group')
             .data(dataset.slice(startSet, endSet))
             .enter()
-            .append('a')
-            .attr('xlink:href', function (d) {
-              return d.link;
-            })
-            .attr('xlink:show', 'new')
-            .append('text')
-            .attr('x', paddingLeft)
-            .attr('y', lineSpacing + dataHeight / 2)
-            .text(function (d) {
-              return d.title;
-            })
+            .append('g')
+            .attr('class', 'label-group')
             .attr('transform', function (d, i) {
               return 'translate(0,' + (lineSpacing + dataHeight) * i + ')';
+            });
+
+          // Add vertical tree guidelines
+          labelGroups
+            .filter(function (d) {
+              return d.depth && d.depth > 0;
             })
-            .attr('class', 'ytitle');
+            .append('line')
+            .attr('class', 'tree-guideline')
+            .attr('x1', function (d) {
+              return paddingLeft + (d.depth - 1) * 16;
+            })
+            .attr('y1', -(lineSpacing + dataHeight) / 2)
+            .attr('x2', function (d) {
+              return paddingLeft + (d.depth - 1) * 16;
+            })
+            .attr('y2', lineSpacing + dataHeight / 2)
+            .attr('stroke', 'var(--color-border-muted, #d1d5db)')
+            .attr('stroke-width', 1);
+
+          // Add horizontal connector for children
+          labelGroups
+            .filter(function (d) {
+              return d.depth && d.depth > 0;
+            })
+            .append('line')
+            .attr('class', 'tree-connector')
+            .attr('x1', function (d) {
+              return paddingLeft + (d.depth - 1) * 16;
+            })
+            .attr('y1', lineSpacing + dataHeight / 2)
+            .attr('x2', function (d) {
+              return paddingLeft + d.depth * 16 - 4;
+            })
+            .attr('y2', lineSpacing + dataHeight / 2)
+            .attr('stroke', 'var(--color-border-muted, #d1d5db)')
+            .attr('stroke-width', 1);
+
+          // Add expand/collapse toggle button for items with children
+          labelGroups
+            .filter(function (d) {
+              return d.hasChildren;
+            })
+            .append('text')
+            .attr('class', 'tree-toggle')
+            .attr('x', function (d) {
+              return paddingLeft + d.depth * 16;
+            })
+            .attr('y', lineSpacing + dataHeight / 2 + 4)
+            .text(function (d) {
+              return d.isExpanded ? '−' : '+';
+            })
+            .attr('fill', '#6b7280')
+            .attr('font-size', '16px')
+            .attr('font-weight', 'bold')
+            .attr('cursor', 'pointer')
+            .attr('data-iid', function (d) {
+              return d.iid || '';
+            })
+            .on('click', function (d) {
+              // Emit event to parent component
+              const event = new CustomEvent('toggle-expand', {
+                detail: { iid: d.iid },
+                bubbles: true,
+              });
+              this.dispatchEvent(event);
+            });
+
+          // Add GitLab icon (Issue or Task)
+          labelGroups
+            .append('text')
+            .attr('class', 'gitlab-icon')
+            .attr('x', function (d) {
+              // Position after toggle button (if any) or at start
+              const toggleOffset = d.hasChildren ? 16 : 0;
+              return paddingLeft + d.depth * 16 + toggleOffset;
+            })
+            .attr('y', lineSpacing + dataHeight / 2 + 4)
+            .text(function (d) {
+              // 📋 for Issue (parent), ✓ for Task (child), 📄 for childless issue
+              if (d.isGitLabTask) {
+                return '☑'; // Task/subtask (checkbox)
+              } else if (d.hasChildren) {
+                return '📋'; // Issue with children
+              } else {
+                return '📄'; // Issue without children
+              }
+            })
+            .attr('font-size', '12px');
+
+          // Add task titles with indentation
+          labelGroups
+            .append('a')
+            .attr('xlink:href', (d) => d.link)
+            .attr('xlink:show', 'new')
+            .append('text')
+            .attr('x', (d) => {
+              // Position: depth indent + toggle (if children) + icon + spacing
+              const toggleOffset = d.hasChildren ? 16 : 0;
+              const iconOffset = 18; // Space for the icon
+              return paddingLeft + d.depth * 16 + toggleOffset + iconOffset;
+            })
+            .attr('y', lineSpacing + dataHeight / 2)
+            .text((d) => d.title)
+            .attr('class', (d) => {
+              // Add highlight class if text matches the search term
+              let className = d.isDimmed ? 'ytitle ytitle-dimmed' : 'ytitle';
+              if (this.searchTerm && this.searchTerm.trim()) {
+                const matches = this.matchesSearch(d.title, this.searchTerm, this.searchMode);
+                if (matches) {
+                  className += ' ytitle-highlighted';
+                }
+              }
+              return className;
+            });
 
           // create vertical grid
           svg
@@ -725,6 +856,40 @@ export default {
     @apply font-lead;
     -moz-osx-font-smoothing: grayscale;
     font-size: 12px;
+  }
+
+  .ytitle-dimmed {
+    /* dimmed labels for non-matching ancestors */
+    opacity: 0.5;
+  }
+
+  .ytitle-highlighted {
+    /* highlighted labels that match the search filter */
+    @apply bg-gray-200;
+    padding: 2px 4px;
+    border-radius: 2px;
+  }
+
+  .tree-guideline {
+    /* vertical guidelines for tree structure */
+    stroke: var(--color-border-muted, #d1d5db);
+    stroke-width: 1px;
+  }
+
+  .tree-connector {
+    /* horizontal connectors for tree structure */
+    stroke: var(--color-border-muted, #d1d5db);
+    stroke-width: 1px;
+  }
+
+  .tree-toggle {
+    /* expand/collapse toggle button */
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .tree-toggle:hover {
+    fill: #374151;
   }
 
   .axis path,
