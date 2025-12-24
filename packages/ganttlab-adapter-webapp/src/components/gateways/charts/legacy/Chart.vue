@@ -666,6 +666,54 @@ export default {
               .attr('class', 'heading');
           }
 
+          // Check if there are any tasks with children
+          const hasTasksWithChildren = dataset.some(d => d.hasChildren);
+          
+          // Create expand/collapse all button
+          if (hasTasksWithChildren) {
+            // Check current expansion state - all expanded if all child-bearing tasks are expanded
+            const allExpanded = dataset
+              .filter(d => d.hasChildren)
+              .every(d => d.isExpanded);
+            
+            const expandAllButton = svg
+              .select('#g_title')
+              .append('g')
+              .attr('class', 'expand-all-button')
+              .attr('cursor', 'pointer')
+              .attr('transform', 'translate(' + paddingLeft + ',' + (paddingTopHeading - 5) + ')');
+            
+            expandAllButton
+              .append('rect')
+              .attr('x', 0)
+              .attr('y', 0)
+              .attr('width', 80)
+              .attr('height', 20)
+              .attr('rx', 3)
+              .attr('fill', '#4b5563')
+              .attr('stroke', '#6b7280')
+              .attr('stroke-width', 1);
+            
+            expandAllButton
+              .append('text')
+              .attr('x', 40)
+              .attr('y', 14)
+              .attr('text-anchor', 'middle')
+              .attr('fill', '#ffffff')
+              .attr('font-size', '12px')
+              .attr('font-weight', '500')
+              .text(allExpanded ? 'Collapse' : 'Expand');
+            
+            expandAllButton.on('click', function() {
+              // Emit event to parent component
+              const event = new CustomEvent('toggle-expand-all', {
+                detail: { expandAll: !allExpanded },
+                bubbles: true,
+              });
+              this.dispatchEvent(event);
+            });
+          }
+
           // create subtitle
           let subtitleText = '';
           if (isDateOnlyFormat) {

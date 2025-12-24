@@ -509,6 +509,42 @@ export default class Home extends Vue {
     );
   }
 
+  handleToggleExpandAll(event: CustomEvent) {
+    const { expandAll } = event.detail;
+    
+    if (!this.originalPaginatedTasks) return;
+
+    if (expandAll) {
+      // Expand all tasks that have children
+      treeHierarchyService.expandAll(this.originalPaginatedTasks.list);
+      
+      // Update expansion state on all tasks
+      this.originalPaginatedTasks.list.forEach((task) => {
+        if (task.hasChildren) {
+          task.isExpanded = true;
+        }
+      });
+    } else {
+      // Collapse all tasks
+      treeHierarchyService.collapseAll(this.originalPaginatedTasks.list);
+      
+      // Update expansion state on all tasks
+      this.originalPaginatedTasks.list.forEach((task) => {
+        task.isExpanded = false;
+      });
+    }
+
+    // Re-apply the filter to update visibility
+    this.applyIssueFilter();
+
+    // Track analytics
+    trackInteractionEvent(
+      'Tree',
+      expandAll ? 'Expand All' : 'Collapse All',
+      undefined,
+    );
+  }
+
   async fetchChildrenForTask(task: Task) {
     // TODO: Implement child fetching via GitLab API
     // For now, we'll just use cached children if available
@@ -526,11 +562,13 @@ export default class Home extends Vue {
 
     // Listen for tree expand/collapse events
     document.addEventListener('toggle-expand', this.handleToggleExpand as EventListener);
+    document.addEventListener('toggle-expand-all', this.handleToggleExpandAll as EventListener);
   }
 
   beforeDestroy() {
     // Clean up event listener
     document.removeEventListener('toggle-expand', this.handleToggleExpand as EventListener);
+    document.removeEventListener('toggle-expand-all', this.handleToggleExpandAll as EventListener);
   }
 
   goToWebsite() {

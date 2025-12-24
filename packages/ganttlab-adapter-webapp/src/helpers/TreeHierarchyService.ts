@@ -161,6 +161,32 @@ export class TreeHierarchyService {
   getExpandedIds(): string[] {
     return Array.from(this.expandedIds);
   }
+
+  /**
+   * Expand all tasks that have children
+   * @param tasks - Array of all tasks to expand
+   */
+  expandAll(tasks: Task[]): void {
+    tasks.forEach((task) => {
+      if (task.hasChildren && task.iid) {
+        this.expandedIds.add(task.iid);
+      }
+    });
+    this.saveStateToSession();
+  }
+
+  /**
+   * Collapse all tasks
+   * @param tasks - Array of all tasks to collapse
+   */
+  collapseAll(tasks: Task[]): void {
+    tasks.forEach((task) => {
+      if (task.iid) {
+        this.expandedIds.delete(task.iid);
+      }
+    });
+    this.saveStateToSession();
+  }
 }
 
 /**
