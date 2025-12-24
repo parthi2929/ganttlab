@@ -24,12 +24,14 @@ interface WorkItemHierarchyWidget {
   };
 }
 
-interface WorkItemResponse {
+interface WorkItemsResponse {
   project: {
-    workItem: {
-      iid: string;
-      title: string;
-      widgets: WorkItemHierarchyWidget[];
+    workItems: {
+      nodes: Array<{
+        iid: string;
+        title: string;
+        widgets: WorkItemHierarchyWidget[];
+      }>;
     };
   };
 }
@@ -48,16 +50,18 @@ export class GitLabHierarchyService {
   ): Promise<WorkItemHierarchyWidget | null> {
     try {
       const query = `
-        query getWorkItemHierarchy($fullPath: ID!, $iid: String!) {
+        query getWorkItemHierarchy($fullPath: ID!, $iids: [String!]!) {
           project(fullPath: $fullPath) {
-            workItem(iid: $iid) {
-              iid
-              title
-              widgets {
-                ... on WorkItemWidgetHierarchy {
-                  hasParent
-                  parent { iid title webUrl }
-                  hasChildren
+            workItems(iids: $iids) {
+              nodes {
+                iid
+                title
+                widgets {
+                  ... on WorkItemWidgetHierarchy {
+                    hasParent
+                    parent { iid title webUrl }
+                    hasChildren
+                  }
                 }
               }
             }
@@ -65,23 +69,24 @@ export class GitLabHierarchyService {
         }
       `;
 
+      const baseUrl = gateway.getUrl();
       const { data } = await gateway.safeAxiosRequest<{
-        data: WorkItemResponse;
+        data: WorkItemsResponse;
       }>({
         method: 'POST',
-        url: '/graphql',
+        url: `${baseUrl}/api/graphql`,
         data: {
           query,
           variables: {
             fullPath: projectPath,
-            iid,
+            iids: [iid],
           },
         },
       });
 
-      if (data.data?.project?.workItem?.widgets) {
-        // Find the hierarchy widget
-        for (const widget of data.data.project.workItem.widgets) {
+      if (data.data?.project?.workItems?.nodes?.[0]?.widgets) {
+        // Find the hierarchy widget from the first node
+        for (const widget of data.data.project.workItems.nodes[0].widgets) {
           if (
             widget.hasParent !== undefined ||
             widget.hasChildren !== undefined
@@ -114,16 +119,18 @@ export class GitLabHierarchyService {
   }> {
     try {
       const query = `
-        query getWorkItemChildren($fullPath: ID!, $iid: String!, $first: Int!, $after: String) {
+        query getWorkItemChildren($fullPath: ID!, $iids: [String!]!, $first: Int!, $after: String) {
           project(fullPath: $fullPath) {
-            workItem(iid: $iid) {
-              iid
-              title
-              widgets {
-                ... on WorkItemWidgetHierarchy {
-                  children(first: $first, after: $after) {
-                    nodes { iid title webUrl }
-                    pageInfo { endCursor hasNextPage }
+            workItems(iids: $iids) {
+              nodes {
+                iid
+                title
+                widgets {
+                  ... on WorkItemWidgetHierarchy {
+                    children(first: $first, after: $after) {
+                      nodes { iid title webUrl }
+                      pageInfo { endCursor hasNextPage }
+                    }
                   }
                 }
               }
@@ -132,24 +139,25 @@ export class GitLabHierarchyService {
         }
       `;
 
+      const baseUrl = gateway.getUrl();
       const { data } = await gateway.safeAxiosRequest<{
-        data: WorkItemResponse;
+        data: WorkItemsResponse;
       }>({
         method: 'POST',
-        url: '/graphql',
+        url: `${baseUrl}/api/graphql`,
         data: {
           query,
           variables: {
             fullPath: projectPath,
-            iid,
+            iids: [iid],
             first,
             after,
           },
         },
       });
 
-      if (data.data?.project?.workItem?.widgets) {
-        for (const widget of data.data.project.workItem.widgets) {
+      if (data.data?.project?.workItems?.nodes?.[0]?.widgets) {
+        for (const widget of data.data.project.workItems.nodes[0].widgets) {
           if (widget.children) {
             return {
               children: widget.children.nodes,
@@ -169,7 +177,7 @@ export class GitLabHierarchyService {
 
   /**
    * Batch fetch hierarchy information for multiple issues
-   * Uses GraphQL aliases to fetch up to 50 issues in one request
+   * Fetches up to 50 issues per request using workItems query
    */
   async batchFetchHierarchy(
     gateway: GitLabGateway,
@@ -194,7 +202,7 @@ export class GitLabHierarchyService {
   }
 
   /**
-   * Fetch hierarchy for a batch of issues using GraphQL aliases
+   * Fetch hierarchy for a batch of issues using workItems query
    */
   private async fetchHierarchyBatch(
     gateway: GitLabGateway,
@@ -204,57 +212,51 @@ export class GitLabHierarchyService {
     const result = new Map<string, WorkItemHierarchyWidget>();
 
     try {
-      // Build query with aliases
-      const aliases = iids.map(
-        (iid) => `
-        issue_${iid}: workItem(iid: "${iid}") {
-          iid
-          title
-          widgets {
-            ... on WorkItemWidgetHierarchy {
-              hasParent
-              parent { iid title webUrl }
-              hasChildren
-            }
-          }
-        }
-      `,
-      );
-
       const query = `
-        query batchGetWorkItemHierarchy($fullPath: ID!) {
+        query batchGetWorkItemHierarchy($fullPath: ID!, $iids: [String!]!) {
           project(fullPath: $fullPath) {
-            ${aliases.join('\n')}
+            workItems(iids: $iids) {
+              nodes {
+                iid
+                title
+                widgets {
+                  ... on WorkItemWidgetHierarchy {
+                    hasParent
+                    parent { iid title webUrl }
+                    hasChildren
+                  }
+                }
+              }
+            }
           }
         }
       `;
 
+      const baseUrl = gateway.getUrl();
       const { data } = await gateway.safeAxiosRequest<{
-        data: {
-          project?: Record<string, { widgets?: WorkItemHierarchyWidget[] }>;
-        };
+        data: WorkItemsResponse;
       }>({
         method: 'POST',
-        url: '/graphql',
+        url: `${baseUrl}/api/graphql`,
         data: {
           query,
           variables: {
             fullPath: projectPath,
+            iids,
           },
         },
       });
 
-      if (data.data?.project) {
-        // Process each aliased response
-        for (const iid of iids) {
-          const workItem = data.data.project[`issue_${iid}`];
-          if (workItem?.widgets) {
+      if (data.data?.project?.workItems?.nodes) {
+        // Process each work item in the response
+        for (const workItem of data.data.project.workItems.nodes) {
+          if (workItem.widgets) {
             for (const widget of workItem.widgets) {
               if (
                 widget.hasParent !== undefined ||
                 widget.hasChildren !== undefined
               ) {
-                result.set(iid, widget);
+                result.set(workItem.iid, widget);
                 break;
               }
             }
