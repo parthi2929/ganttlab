@@ -238,8 +238,19 @@ export class TreeBuilder {
       const filteredTask = { ...task };
       filteredTask.matchesFilter = taskMatches;
       filteredTask.isDimmed = !taskMatches && hasMatchingDescendant;
-      filteredTask.children =
-        filteredChildren.length > 0 ? filteredChildren : task.children;
+
+      // Set children based on whether we have filtered children
+      if (filteredChildren.length > 0) {
+        // Has matching children - use filtered children list
+        filteredTask.children = filteredChildren;
+        filteredTask.hasChildren = true;
+      } else {
+        // No children matched filter, but preserve original hasChildren status
+        // This ensures expand/collapse button appears correctly during filtering
+        filteredTask.children = task.children || [];
+        filteredTask.hasChildren = task.hasChildren || false;
+      }
+
       return filteredTask;
     }
 

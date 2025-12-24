@@ -214,7 +214,7 @@ import LocalForage, {
   setRememberedIssueFilter,
 } from '../helpers/LocalForage';
 import { trackVirtualpageView, trackInteractionEvent } from '../helpers/GTM';
-import { filterTasks, filterTasksWithTree, FilterResult } from '../helpers/IssueFilterHelper';
+import { FilterResult } from '../helpers/IssueFilterHelper';
 import { TreeBuilder } from '../helpers/TreeBuilder';
 import { treeHierarchyService } from '../helpers/TreeHierarchyService';
 
@@ -431,36 +431,44 @@ export default class Home extends Vue {
     console.log('=== applyIssueFilter START ===');
     console.log('Original tasks count:', this.originalPaginatedTasks.list.length);
 
+    // Work with a shallow copy of tasks to avoid mutation issues
+    // This ensures we don't accidentally modify the original task objects
+    const tasksCopy = this.originalPaginatedTasks.list.map(t => ({ ...t }));
+
     // Apply expansion state to tasks
-    TreeBuilder.applyExpansionState(this.originalPaginatedTasks.list);
+    TreeBuilder.applyExpansionState(tasksCopy);
 
     // Build tree structure - links children to parents and returns only roots
-    const rootTasks = TreeBuilder.buildTree(this.originalPaginatedTasks.list);
+    const rootTasks = TreeBuilder.buildTree(tasksCopy);
     console.log('Root tasks after buildTree:', rootTasks.length);
-
-    // Get visible tasks based on expansion state (includes expanded children)
-    const visibleTasks = TreeBuilder.getVisibleTasks(rootTasks);
-    console.log('Visible tasks:', visibleTasks.length);
 
     // Use tree-aware filtering if feature is enabled
     const useTreeFiltering = mainState.issueHierarchyEnabled !== false; // default to true
 
-    let filterResult: FilterResult;
+    let filteredRootTasks: Task[];
     if (useTreeFiltering && this.issueFilterTerm) {
-      // Tree-aware filtering (keeps ancestors if descendants match)
-      filterResult = filterTasksWithTree(
-        visibleTasks,
+      // Tree-aware filtering on root tasks (BEFORE determining visibility)
+      // This ensures we can find children that match even if parent is collapsed
+      filteredRootTasks = TreeBuilder.filterTree(
+        rootTasks,
         this.issueFilterTerm,
         this.issueFilterMode,
       );
+      console.log('Filtered root tasks:', filteredRootTasks.length);
     } else {
-      // No filter or simple filtering - just use visible tasks
-      filterResult = {
-        filteredTasks: visibleTasks,
-        totalCount: visibleTasks.length,
-        visibleCount: visibleTasks.length,
-      };
+      // No filter - use all root tasks
+      filteredRootTasks = rootTasks;
     }
+
+    // Get visible tasks based on expansion state (includes expanded children)
+    const visibleTasks = TreeBuilder.getVisibleTasks(filteredRootTasks);
+    console.log('Visible tasks:', visibleTasks.length);
+
+    const filterResult: FilterResult = {
+      filteredTasks: visibleTasks,
+      totalCount: visibleTasks.length,
+      visibleCount: visibleTasks.length,
+    };
 
     console.log('Filtered tasks:', filterResult.filteredTasks.length);
     console.log('=== applyIssueFilter END ===');
