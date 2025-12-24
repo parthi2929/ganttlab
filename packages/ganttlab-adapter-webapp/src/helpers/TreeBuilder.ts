@@ -20,6 +20,7 @@ export class TreeBuilder {
         taskMap.set(task.iid, task);
         // Reset children array
         task.children = [];
+        task.hasChildren = undefined;
       }
     });
 
