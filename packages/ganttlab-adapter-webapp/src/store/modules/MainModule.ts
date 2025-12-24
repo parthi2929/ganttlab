@@ -8,6 +8,7 @@ import {
   SourceVisitor,
 } from 'ganttlab-entities';
 import { DisplayableError } from '../../helpers/DisplayableError';
+import { UrlState } from '../../helpers/UrlStateParser';
 
 @Module({
   dynamic: true,
@@ -34,9 +35,17 @@ export default class MainModule extends VuexModule {
   // Issue Hierarchy State
   public issueHierarchyEnabled = true;
 
+  // URL State (from URL parameters, takes precedence over localStorage)
+  public urlState: UrlState | null = null;
+
   @Mutation
   public setRemember(remember: boolean) {
     this.remember = remember;
+  }
+
+  @Mutation
+  public setUrlState(urlState: UrlState | null) {
+    this.urlState = urlState;
   }
 
   @Mutation
