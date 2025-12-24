@@ -409,7 +409,11 @@ export default {
               // Add highlight class if text matches the search term
               let className = d.isDimmed ? 'ytitle ytitle-dimmed' : 'ytitle';
               if (this.searchTerm && this.searchTerm.trim()) {
-                const matches = this.matchesSearch(d.title, this.searchTerm, this.searchMode);
+                const matches = this.matchesSearch(
+                  d.title,
+                  this.searchTerm,
+                  this.searchMode,
+                );
                 if (matches) {
                   className += ' ytitle-highlighted';
                 }
@@ -667,22 +671,29 @@ export default {
           }
 
           // Check if there are any tasks with children
-          const hasTasksWithChildren = dataset.some(d => d.hasChildren);
-          
+          const hasTasksWithChildren = dataset.some((d) => d.hasChildren);
+
           // Create expand/collapse all button
           if (hasTasksWithChildren) {
             // Check current expansion state - all expanded if all child-bearing tasks are expanded
             const allExpanded = dataset
-              .filter(d => d.hasChildren)
-              .every(d => d.isExpanded);
-            
+              .filter((d) => d.hasChildren)
+              .every((d) => d.isExpanded);
+
             const expandAllButton = svg
               .select('#g_title')
               .append('g')
               .attr('class', 'expand-all-button')
               .attr('cursor', 'pointer')
-              .attr('transform', 'translate(' + paddingLeft + ',' + (paddingTopHeading - 20) + ')');
-            
+              .attr(
+                'transform',
+                'translate(' +
+                  paddingLeft +
+                  ',' +
+                  (paddingTopHeading - 20) +
+                  ')',
+              );
+
             expandAllButton
               .append('rect')
               .attr('x', 0)
@@ -693,7 +704,7 @@ export default {
               .attr('fill', '#4b5563')
               .attr('stroke', '#6b7280')
               .attr('stroke-width', 1);
-            
+
             expandAllButton
               .append('text')
               .attr('x', 40)
@@ -703,8 +714,8 @@ export default {
               .attr('font-size', '12px')
               .attr('font-weight', '500')
               .text(allExpanded ? 'Collapse' : 'Expand');
-            
-            expandAllButton.on('click', function() {
+
+            expandAllButton.on('click', function () {
               // Emit event to parent component
               const event = new CustomEvent('toggle-expand-all', {
                 detail: { expandAll: !allExpanded },

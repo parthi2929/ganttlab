@@ -52,6 +52,11 @@
           </a>
         </div>
         <div class="w-64 flex items-center justify-end">
+          <ShareDropdown
+            class="mr-4"
+            @copy-as-url="handleCopyAsUrl"
+            @copy-as-png="handleCopyAsPng"
+          />
           <a
             class="mr-12 flex items-center img-reset-opacity"
             :href="user.url"
@@ -194,6 +199,7 @@ import TasksDisplay from './displays/TasksDisplay.vue';
 import MilestonesDisplay from './displays/MilestonesDisplay.vue';
 import NoData from './gateways/views/NoData.vue';
 import IssueFilter from './generic/IssueFilter.vue';
+import ShareDropdown from './generic/ShareDropdown.vue';
 import {
   User,
   Source,
@@ -218,6 +224,37 @@ import { FilterResult } from '../helpers/IssueFilterHelper';
 import { TreeBuilder } from '../helpers/TreeBuilder';
 import { treeHierarchyService } from '../helpers/TreeHierarchyService';
 
+// Type declarations for Clipboard API
+declare global {
+  interface Clipboard {
+    write(items: ClipboardItem[]): Promise<void>;
+  }
+  interface ClipboardItem {
+    readonly types: string[];
+    getType(type: string): Promise<Blob>;
+  }
+  interface ClipboardItemConstructor {
+    new (items: Record<string, Blob | Promise<Blob>>): ClipboardItem;
+  }
+  const ClipboardItem: ClipboardItemConstructor;
+}
+
+// Interface for URL state encoding
+interface ShareState {
+  v: number;
+  source?: string;
+  sourceUrl?: string;
+  view?: string;
+  projectId?: string;
+  projectPath?: string;
+  activeMilestone?: number;
+  tasksPage?: number;
+  milestonesPage?: number;
+  filterTerm?: string;
+  filterMode?: 'simple' | 'regex';
+  expanded?: string;
+}
+
 const mainState = getModule(MainModule);
 
 @Component({
@@ -229,6 +266,7 @@ const mainState = getModule(MainModule);
     MilestonesDisplay,
     NoData,
     IssueFilter,
+    ShareDropdown,
   },
 })
 export default class Home extends Vue {
@@ -429,11 +467,14 @@ export default class Home extends Vue {
     }
 
     console.log('=== applyIssueFilter START ===');
-    console.log('Original tasks count:', this.originalPaginatedTasks.list.length);
+    console.log(
+      'Original tasks count:',
+      this.originalPaginatedTasks.list.length,
+    );
 
     // Work with a shallow copy of tasks to avoid mutation issues
     // This ensures we don't accidentally modify the original task objects
-    const tasksCopy = this.originalPaginatedTasks.list.map(t => ({ ...t }));
+    const tasksCopy = this.originalPaginatedTasks.list.map((t) => ({ ...t }));
 
     // Apply expansion state to tasks
     TreeBuilder.applyExpansionState(tasksCopy);
@@ -510,22 +551,18 @@ export default class Home extends Vue {
     }
 
     // Track analytics
-    trackInteractionEvent(
-      'Tree',
-      isExpanded ? 'Expand' : 'Collapse',
-      iid,
-    );
+    trackInteractionEvent('Tree', isExpanded ? 'Expand' : 'Collapse', iid);
   }
 
   handleToggleExpandAll(event: CustomEvent) {
     const { expandAll } = event.detail;
-    
+
     if (!this.originalPaginatedTasks) return;
 
     if (expandAll) {
       // Expand all tasks that have children
       treeHierarchyService.expandAll(this.originalPaginatedTasks.list);
-      
+
       // Update expansion state on all tasks
       this.originalPaginatedTasks.list.forEach((task) => {
         if (task.hasChildren) {
@@ -535,7 +572,7 @@ export default class Home extends Vue {
     } else {
       // Collapse all tasks
       treeHierarchyService.collapseAll(this.originalPaginatedTasks.list);
-      
+
       // Update expansion state on all tasks
       this.originalPaginatedTasks.list.forEach((task) => {
         task.isExpanded = false;
@@ -561,22 +598,318 @@ export default class Home extends Vue {
   }
 
   async mounted() {
-    // Restore filter state from session storage
-    const rememberedFilter = await getRememberedIssueFilter();
-    if (rememberedFilter) {
-      mainState.setIssueFilterTerm(rememberedFilter.term);
-      mainState.setIssueFilterMode(rememberedFilter.mode);
+    // Check for state in URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+
+    // Check if we have any share parameters
+    const hasShareParams =
+      urlParams.has('filter') ||
+      urlParams.has('expanded') ||
+      urlParams.has('project') ||
+      urlParams.has('view');
+
+    if (hasShareParams) {
+      try {
+        // Restore filter state
+        const filterTerm = urlParams.get('filter');
+        if (filterTerm) {
+          mainState.setIssueFilterTerm(filterTerm);
+        }
+
+        const filterMode = urlParams.get('filterMode');
+        if (filterMode === 'regex' || filterMode === 'simple') {
+          mainState.setIssueFilterMode(filterMode);
+        }
+
+        // Restore expansion state
+        const expanded = urlParams.get('expanded');
+        if (expanded) {
+          const expandedIds = expanded.split(',');
+          expandedIds.forEach((iid: string) => {
+            if (iid.trim()) {
+              treeHierarchyService.expand(iid.trim());
+            }
+          });
+        }
+
+        // Log additional parameters for debugging
+        // Note: Source, view, and project need to be handled by the authentication/view selection flow
+        const source = urlParams.get('source');
+        const view = urlParams.get('view');
+        const project = urlParams.get('project');
+
+        if (source || view || project) {
+          console.log('URL contains state:', {
+            source,
+            view,
+            project,
+            sourceUrl: urlParams.get('sourceUrl'),
+            projectId: urlParams.get('projectId'),
+            milestone: urlParams.get('milestone'),
+            tasksPage: urlParams.get('tasksPage'),
+            milestonesPage: urlParams.get('milestonesPage'),
+          });
+          // You could store this in vuex to be picked up by the view selector
+        }
+      } catch (error) {
+        console.error('Failed to restore state from URL:', error);
+      }
+    } else {
+      // No URL state, restore from session storage
+      const rememberedFilter = await getRememberedIssueFilter();
+      if (rememberedFilter) {
+        mainState.setIssueFilterTerm(rememberedFilter.term);
+        mainState.setIssueFilterMode(rememberedFilter.mode);
+      }
     }
 
     // Listen for tree expand/collapse events
-    document.addEventListener('toggle-expand', this.handleToggleExpand as EventListener);
-    document.addEventListener('toggle-expand-all', this.handleToggleExpandAll as EventListener);
+    document.addEventListener(
+      'toggle-expand',
+      this.handleToggleExpand as EventListener,
+    );
+    document.addEventListener(
+      'toggle-expand-all',
+      this.handleToggleExpandAll as EventListener,
+    );
   }
 
   beforeDestroy() {
     // Clean up event listener
-    document.removeEventListener('toggle-expand', this.handleToggleExpand as EventListener);
-    document.removeEventListener('toggle-expand-all', this.handleToggleExpandAll as EventListener);
+    document.removeEventListener(
+      'toggle-expand',
+      this.handleToggleExpand as EventListener,
+    );
+    document.removeEventListener(
+      'toggle-expand-all',
+      this.handleToggleExpandAll as EventListener,
+    );
+  }
+
+  async handleCopyAsUrl() {
+    try {
+      // Build URL with readable query parameters
+      const params = new URLSearchParams();
+
+      // Source information
+      if (this.sourceGateway) {
+        params.set('source', this.sourceGateway.slug);
+        if (this.sourceGateway instanceof AuthenticatableSource) {
+          const url = this.sourceGateway.getUrl();
+          if (url) {
+            params.set('sourceUrl', url);
+          }
+        }
+      }
+
+      // View information
+      if (this.viewGateway) {
+        params.set('view', this.viewGateway.slug);
+
+        // View configuration
+        if (this.viewGateway.configuration) {
+          const config = this.viewGateway.configuration;
+
+          // Project
+          if (config.project) {
+            if (config.project.id) {
+              params.set('projectId', config.project.id);
+            }
+            if (config.project.path) {
+              params.set('project', config.project.path);
+            }
+          }
+
+          // Active milestone
+          if (config.activeMilestone !== undefined) {
+            params.set('milestone', config.activeMilestone.toString());
+          }
+
+          // Task and milestone pages
+          if (config.tasks?.page) {
+            params.set('tasksPage', config.tasks.page.toString());
+          }
+          if (config.milestones?.page) {
+            params.set('milestonesPage', config.milestones.page.toString());
+          }
+        }
+      }
+
+      // Filter state
+      if (this.issueFilterTerm) {
+        params.set('filter', this.issueFilterTerm);
+      }
+      if (this.issueFilterMode !== 'simple') {
+        params.set('filterMode', this.issueFilterMode);
+      }
+
+      // Expansion state - only include if there are expanded items
+      const expandedIds = treeHierarchyService.getExpandedIds();
+      if (expandedIds.length > 0) {
+        params.set('expanded', expandedIds.join(','));
+      }
+
+      // Build full URL
+      const baseUrl = window.location.origin + window.location.pathname;
+      const shareUrl = `${baseUrl}?${params.toString()}`;
+
+      // Copy to clipboard
+      await navigator.clipboard.writeText(shareUrl);
+
+      // Show success message (you can add a toast notification here)
+      console.log('URL copied to clipboard:', shareUrl);
+      alert('URL copied to clipboard! You can now share this link.');
+
+      trackInteractionEvent('Share', 'Copy as URL');
+    } catch (error) {
+      console.error('Failed to copy URL:', error);
+      alert('Failed to copy URL. Please try again.');
+    }
+  }
+
+  async handleCopyAsPng() {
+    try {
+      // Dynamically import html2canvas
+      const html2canvas = (await import('html2canvas')).default;
+
+      const chartElement = document.getElementById('legacyChart');
+      if (!chartElement) {
+        alert('Chart not found. Please ensure the chart is visible.');
+        return;
+      }
+
+      // Hide expand/collapse button before capturing
+      const expandButtons = chartElement.querySelectorAll('.expand-all-button');
+      const originalDisplay: string[] = [];
+      expandButtons.forEach((button, index) => {
+        const element = button as HTMLElement;
+        originalDisplay[index] = element.style.display;
+        element.style.display = 'none';
+      });
+
+      // Create footer with metadata
+      const footer = document.createElement('div');
+      footer.id = 'chart-export-footer';
+      footer.style.cssText = `
+        padding: 12px 16px;
+        background-color: #f3f4f6;
+        border-top: 1px solid #d1d5db;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 12px;
+        color: #4b5563;
+        line-height: 1.5;
+      `;
+
+      // Build metadata text
+      const metadataParts: string[] = [];
+
+      // User
+      if (this.user) {
+        metadataParts.push(`User: ${this.user.username}`);
+      }
+
+      // Source
+      if (this.sourceGateway) {
+        metadataParts.push(`Source: ${this.sourceGateway.name}`);
+      }
+
+      // View and Project
+      if (this.viewGateway) {
+        metadataParts.push(`View: ${this.viewGateway.name}`);
+      }
+      if (this.project) {
+        metadataParts.push(`Project: ${this.project.path}`);
+      }
+
+      // Active milestone
+      if (this.activeMilestone !== null && this.paginatedMilestones) {
+        const milestone = this.paginatedMilestones.list[this.activeMilestone];
+        if (milestone) {
+          metadataParts.push(`Milestone: ${milestone.name}`);
+        }
+      }
+
+      // Filter
+      if (this.issueFilterTerm) {
+        const filterModeLabel = this.issueFilterMode === 'regex' ? 'regex' : '';
+        metadataParts.push(
+          `Filter: "${this.issueFilterTerm}"${filterModeLabel ? ` (${filterModeLabel})` : ''}`,
+        );
+      }
+
+      // Task counts
+      if (this.originalTasksCount > 0) {
+        if (this.issueFilterTerm) {
+          metadataParts.push(
+            `Showing: ${this.filteredTasksCount} of ${this.originalTasksCount} open issues`,
+          );
+        } else {
+          metadataParts.push(`Issues: ${this.originalTasksCount}`);
+        }
+      }
+
+      // Export timestamp
+      const now = new Date();
+      metadataParts.push(
+        `Exported: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`,
+      );
+
+      footer.textContent = metadataParts.join(' • ');
+      chartElement.appendChild(footer);
+
+      // Capture the chart with footer
+      const canvas = await html2canvas(chartElement, {
+        backgroundColor: '#ffffff',
+        scale: 2, // Higher quality
+        logging: false,
+      });
+
+      // Cleanup: Remove footer and restore expand/collapse button
+      chartElement.removeChild(footer);
+      expandButtons.forEach((button, index) => {
+        const element = button as HTMLElement;
+        element.style.display = originalDisplay[index];
+      });
+
+      // Convert canvas to blob
+      canvas.toBlob(async (blob) => {
+        if (blob) {
+          try {
+            // Try to copy to clipboard using Clipboard API if available
+            if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+              await navigator.clipboard.write([
+                new ClipboardItem({
+                  'image/png': blob,
+                }),
+              ]);
+
+              console.log('Chart image copied to clipboard');
+              alert('Chart copied as image to clipboard!');
+
+              trackInteractionEvent('Share', 'Copy as PNG');
+            } else {
+              // Fallback: download the image
+              throw new Error('Clipboard API not available');
+            }
+          } catch (clipboardError) {
+            console.error('Failed to copy to clipboard:', clipboardError);
+            // Fallback: download the image
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `ganttlab-chart-${Date.now()}.png`;
+            link.click();
+            URL.revokeObjectURL(url);
+            alert('Unable to copy to clipboard. Image downloaded instead.');
+
+            trackInteractionEvent('Share', 'Download PNG');
+          }
+        }
+      }, 'image/png');
+    } catch (error) {
+      console.error('Failed to capture chart:', error);
+      alert('Failed to capture chart. Please try again.');
+    }
   }
 
   goToWebsite() {

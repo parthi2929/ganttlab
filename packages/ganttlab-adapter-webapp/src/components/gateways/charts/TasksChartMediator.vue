@@ -1,8 +1,8 @@
 <template>
   <div class="w-full">
-    <component 
-      v-if="chart" 
-      :is="chartComponent" 
+    <component
+      v-if="chart"
+      :is="chartComponent"
       :tasks="tasks"
       :searchTerm="searchTerm"
       :searchMode="searchMode"
