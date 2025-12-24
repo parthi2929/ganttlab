@@ -80,7 +80,7 @@ export default {
       // define chart layout
       const margin = {
         // top margin includes title and legend
-        top: 70,
+        top: 85,
 
         // right margin should provide space for last horz. axis title
         right: 40,
@@ -97,8 +97,8 @@ export default {
       // spacing between horizontal data bars
       const lineSpacing = 14;
 
-      // vertical space for heading
-      const paddingTopHeading = -50;
+      // vertical space for heading (increased to accommodate two-line header)
+      const paddingTopHeading = -65;
 
       // vertical overhang of vertical grid lines on bottom
       const paddingBottom = 10;
@@ -791,18 +791,14 @@ export default {
             .text(subtitleText)
             .attr('class', 'subheading');
 
-          // Add metadata info on the same line as the time text
+          // Add metadata info on a separate line below the time text
           if (metadata && metadata.trim()) {
-            // Get the width of the subheading text to position metadata right after it
-            const subheadingWidth = subheadingText.node().getBBox().width;
-            const metadataX = paddingLeft + subheadingWidth + 15; // 15px gap after time text
-            
             svg
               .select('#g_title')
               .append('text')
               .attr('class', 'metadata-info')
-              .attr('x', metadataX)
-              .attr('y', paddingTopHeading + 17)
+              .attr('x', paddingLeft)
+              .attr('y', paddingTopHeading + 30) // 13px below the time text
               .text(metadata)
               .attr('font-size', '11px')
               .attr('fill', '#374151')
