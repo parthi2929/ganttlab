@@ -14,6 +14,7 @@ interface LegacyTask {
   // GitLab type indicators
   isGitLabIssue?: boolean;
   isGitLabTask?: boolean;
+  isClosed?: boolean;
 }
 
 export function getConvertedTasks(tasks: Array<Task>): Array<LegacyTask> {
@@ -68,6 +69,7 @@ export function getConvertedTasks(tasks: Array<Task>): Array<LegacyTask> {
       // GitLab type indicators
       isGitLabIssue: aTask.isGitLabIssue || false,
       isGitLabTask: aTask.isGitLabTask || false,
+      isClosed: aTask.isClosed || false,
     };
 
     // adding the dataset built to the main dataset list

@@ -65,6 +65,11 @@ export class Task {
   public isGitLabTask?: boolean;
 
   /**
+   * Whether this issue/task is closed (for visual indicator)
+   */
+  public isClosed?: boolean;
+
+  /**
    * @param title - The title of this task
    * @param url - The URL to this task (directly usable in an `<a>` href)
    * @param start - A start date, which is mandatory without a predecessor

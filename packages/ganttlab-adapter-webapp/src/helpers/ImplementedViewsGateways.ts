@@ -4,6 +4,7 @@ import {
   ViewProject,
   ViewRepository,
   ViewMilestone,
+  ViewAssignedTo,
 } from 'ganttlab-gateways';
 
 export interface ViewGateway {
@@ -43,5 +44,16 @@ export const ImplementedViewsGateways: Array<ViewGateway> = [
     icon: 'file-tray-stacked-outline',
     instance: new ViewMilestone(),
     defaultConfiguration: {},
+  },
+  {
+    slug: 'assigned-to',
+    icon: 'person-outline',
+    instance: new ViewAssignedTo(),
+    defaultConfiguration: {
+      tasks: {
+        page: 1,
+        pageSize: 50,
+      },
+    },
   },
 ];

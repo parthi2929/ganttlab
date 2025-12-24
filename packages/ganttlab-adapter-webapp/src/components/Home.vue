@@ -156,6 +156,7 @@
           <TasksDisplay
             :key="`tasks-${issueFilterTerm}-${issueFilterMode}-${filteredTasksCount}`"
             :paginatedTasks="paginatedTasks"
+            :metadata="chartMetadata"
             @set-tasks-page="setTasksPage($event)"
           />
           <!-- Show message when filter results in no matches -->
@@ -311,11 +312,13 @@ export default class Home extends Vue {
   }
 
   get originalTasksCount(): number {
-    return this.originalPaginatedTasks?.list.length || 0;
+    // Exclude dimmed items (parent issues not matching the criteria but shown for context)
+    return this.originalPaginatedTasks?.list.filter(t => !t.isDimmed).length || 0;
   }
 
   get filteredTasksCount(): number {
-    return this.paginatedTasks?.list.length || 0;
+    // Exclude dimmed items from filtered count as well
+    return this.paginatedTasks?.list.filter(t => !t.isDimmed).length || 0;
   }
 
   get issueFilterTerm(): string {
@@ -324,6 +327,58 @@ export default class Home extends Vue {
 
   get issueFilterMode(): 'simple' | 'regex' {
     return mainState.issueFilterMode || 'simple';
+  }
+
+  // Build metadata string for chart header
+  get chartMetadata(): string {
+    const metadataParts: string[] = [];
+
+    console.log('🔍 Building chartMetadata...');
+    console.log('  viewGateway:', this.viewGateway?.name);
+    console.log('  project:', this.project?.path);
+
+    // View information
+    if (this.viewGateway) {
+      metadataParts.push(`View: ${this.viewGateway.name}`);
+    }
+
+    // Project
+    if (this.project) {
+      metadataParts.push(`Project: ${this.project.path}`);
+    }
+
+    // Active milestone
+    if (this.activeMilestone !== null && this.paginatedMilestones) {
+      const milestone = this.paginatedMilestones.list[this.activeMilestone];
+      if (milestone) {
+        metadataParts.push(`Milestone: ${milestone.name}`);
+      }
+    }
+
+    // Assignee username (for assigned-to view)
+    if (this.viewGateway?.configuration?.assigneeUsername) {
+      metadataParts.push(`Assigned to: ${this.viewGateway.configuration.assigneeUsername}`);
+    }
+
+    // Filter
+    if (this.issueFilterTerm) {
+      const filterModeLabel = this.issueFilterMode === 'regex' ? ' (regex)' : '';
+      metadataParts.push(`Filter: "${this.issueFilterTerm}"${filterModeLabel}`);
+    }
+
+    // Task count
+    if (this.originalTasksCount > 0) {
+      if (this.issueFilterTerm) {
+        metadataParts.push(`${this.filteredTasksCount}/${this.originalTasksCount} issues`);
+      } else {
+        metadataParts.push(`${this.originalTasksCount} issues`);
+      }
+    }
+
+    const result = metadataParts.join(' • ');
+    console.log('✅ chartMetadata result:', result);
+    console.log('   length:', result.length);
+    return result;
   }
 
   // source gateway is stored in vuex store
@@ -476,12 +531,32 @@ export default class Home extends Vue {
     // This ensures we don't accidentally modify the original task objects
     const tasksCopy = this.originalPaginatedTasks.list.map((t) => ({ ...t }));
 
+    console.log('\n📋 All tasks before tree building:');
+    tasksCopy.forEach((t) => {
+      const type = t.isGitLabTask ? 'TASK' : 'ISSUE';
+      const dimmed = t.isDimmed ? '(DIMMED)' : '';
+      const parent = t.parentIid ? `parent:#${t.parentIid}` : 'no-parent';
+      console.log(`  ${type} #${t.iid}: "${t.title}" ${dimmed} [${parent}]`);
+    });
+
     // Apply expansion state to tasks
     TreeBuilder.applyExpansionState(tasksCopy);
 
     // Build tree structure - links children to parents and returns only roots
     const rootTasks = TreeBuilder.buildTree(tasksCopy);
-    console.log('Root tasks after buildTree:', rootTasks.length);
+    console.log('\n🌳 Root tasks after buildTree:', rootTasks.length);
+    rootTasks.forEach((t) => {
+      const type = t.isGitLabTask ? 'TASK' : 'ISSUE';
+      const dimmed = t.isDimmed ? '(DIMMED)' : '';
+      const hasKids = t.hasChildren ? `[${t.children?.length || 0} children]` : '[no children]';
+      const expanded = t.isExpanded ? 'EXPANDED' : 'collapsed';
+      console.log(`  ${type} #${t.iid}: "${t.title}" ${dimmed} ${hasKids} ${expanded}`);
+      if (t.children) {
+        t.children.forEach((c) => {
+          console.log(`    └─ CHILD #${c.iid}: "${c.title}"`);
+        });
+      }
+    });
 
     // Use tree-aware filtering if feature is enabled
     const useTreeFiltering = mainState.issueHierarchyEnabled !== false; // default to true
@@ -503,7 +578,13 @@ export default class Home extends Vue {
 
     // Get visible tasks based on expansion state (includes expanded children)
     const visibleTasks = TreeBuilder.getVisibleTasks(filteredRootTasks);
-    console.log('Visible tasks:', visibleTasks.length);
+    console.log('\n👁️ Visible tasks (what you see):', visibleTasks.length);
+    visibleTasks.forEach((t) => {
+      const type = t.isGitLabTask ? 'TASK' : 'ISSUE';
+      const dimmed = t.isDimmed ? '(DIMMED)' : '';
+      const depth = '  '.repeat(t.depth || 0);
+      console.log(`  ${depth}${type} #${t.iid}: "${t.title}" ${dimmed}`);
+    });
 
     const filterResult: FilterResult = {
       filteredTasks: visibleTasks,
@@ -725,6 +806,11 @@ export default class Home extends Vue {
             params.set('milestone', config.activeMilestone.toString());
           }
 
+          // Assignee username (for assigned-to view)
+          if (config.assigneeUsername) {
+            params.set('assigneeUsername', config.assigneeUsername);
+          }
+
           // Task and milestone pages
           if (config.tasks?.page) {
             params.set('tasksPage', config.tasks.page.toString());
@@ -787,85 +873,14 @@ export default class Home extends Vue {
         element.style.display = 'none';
       });
 
-      // Create footer with metadata
-      const footer = document.createElement('div');
-      footer.id = 'chart-export-footer';
-      footer.style.cssText = `
-        padding: 12px 16px;
-        background-color: #f3f4f6;
-        border-top: 1px solid #d1d5db;
-        font-family: system-ui, -apple-system, sans-serif;
-        font-size: 12px;
-        color: #4b5563;
-        line-height: 1.5;
-      `;
-
-      // Build metadata text
-      const metadataParts: string[] = [];
-
-      // User
-      if (this.user) {
-        metadataParts.push(`User: ${this.user.username}`);
-      }
-
-      // Source
-      if (this.sourceGateway) {
-        metadataParts.push(`Source: ${this.sourceGateway.name}`);
-      }
-
-      // View and Project
-      if (this.viewGateway) {
-        metadataParts.push(`View: ${this.viewGateway.name}`);
-      }
-      if (this.project) {
-        metadataParts.push(`Project: ${this.project.path}`);
-      }
-
-      // Active milestone
-      if (this.activeMilestone !== null && this.paginatedMilestones) {
-        const milestone = this.paginatedMilestones.list[this.activeMilestone];
-        if (milestone) {
-          metadataParts.push(`Milestone: ${milestone.name}`);
-        }
-      }
-
-      // Filter
-      if (this.issueFilterTerm) {
-        const filterModeLabel = this.issueFilterMode === 'regex' ? 'regex' : '';
-        metadataParts.push(
-          `Filter: "${this.issueFilterTerm}"${filterModeLabel ? ` (${filterModeLabel})` : ''}`,
-        );
-      }
-
-      // Task counts
-      if (this.originalTasksCount > 0) {
-        if (this.issueFilterTerm) {
-          metadataParts.push(
-            `Showing: ${this.filteredTasksCount} of ${this.originalTasksCount} open issues`,
-          );
-        } else {
-          metadataParts.push(`Issues: ${this.originalTasksCount}`);
-        }
-      }
-
-      // Export timestamp
-      const now = new Date();
-      metadataParts.push(
-        `Exported: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`,
-      );
-
-      footer.textContent = metadataParts.join(' • ');
-      chartElement.appendChild(footer);
-
-      // Capture the chart with footer
+      // Capture the chart (metadata is already visible at the top)
       const canvas = await html2canvas(chartElement, {
         backgroundColor: '#ffffff',
         scale: 2, // Higher quality
         logging: false,
       });
 
-      // Cleanup: Remove footer and restore expand/collapse button
-      chartElement.removeChild(footer);
+      // Cleanup: Restore expand/collapse button
       expandButtons.forEach((button, index) => {
         const element = button as HTMLElement;
         element.style.display = originalDisplay[index];

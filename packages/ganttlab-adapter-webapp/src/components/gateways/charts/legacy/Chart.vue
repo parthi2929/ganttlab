@@ -28,6 +28,10 @@ export default {
       type: String,
       default: 'simple',
     },
+    metadata: {
+      type: String,
+      default: '',
+    },
   },
   watch: {
     tasks: {
@@ -38,6 +42,18 @@ export default {
       },
       immediate: false,
       deep: false,
+    },
+    metadata: {
+      handler: function (newVal) {
+        console.log('🔄 Metadata prop changed (newVal):', newVal);
+        console.log('🔄 this.metadata in watcher:', this.metadata);
+        console.log('🔄 this.$props.metadata in watcher:', this.$props.metadata);
+        // Redraw chart when metadata changes
+        if (this.tasks && this.tasks.length > 0) {
+          this.refreshChart();
+        }
+      },
+      immediate: true,
     },
   },
   methods: {
@@ -57,6 +73,10 @@ export default {
     },
     // thank you Florian Roscheck for this, you made an awesome work I only needed to tweak a little
     visavailChart: function () {
+      // Capture metadata in closure before chart function is defined
+      const metadata = this.metadata || this.$props.metadata || '';
+      console.log('🎨 visavailChart() - captured metadata:', metadata);
+      
       // define chart layout
       const margin = {
         // top margin includes title and legend
@@ -391,6 +411,25 @@ export default {
             })
             .attr('font-size', '12px');
 
+          // Add closed icon indicator for closed issues/tasks (between type icon and title)
+          labelGroups
+            .filter(function (d) {
+              return d.isClosed === true;
+            })
+            .append('text')
+            .attr('class', 'gitlab-closed-icon')
+            .attr('x', function (d) {
+              // Position after type icon, before title
+              const toggleOffset = d.hasChildren ? 16 : 0;
+              return paddingLeft + d.depth * 16 + toggleOffset + 15; // 15px after type icon
+            })
+            .attr('y', lineSpacing + dataHeight / 2 + 4)
+            .text('🔒') // Closed lock icon
+            .attr('font-size', '10px')
+            .attr('opacity', '0.7')
+            .append('title')
+            .text('Closed issue');
+
           // Add task titles with indentation
           labelGroups
             .append('a')
@@ -398,10 +437,11 @@ export default {
             .attr('xlink:show', 'new')
             .append('text')
             .attr('x', (d) => {
-              // Position: depth indent + toggle (if children) + icon + spacing
+              // Position: depth indent + toggle (if children) + icon + closed icon (if present) + spacing
               const toggleOffset = d.hasChildren ? 16 : 0;
-              const iconOffset = 18; // Space for the icon
-              return paddingLeft + d.depth * 16 + toggleOffset + iconOffset;
+              const iconOffset = 18; // Space for the type icon
+              const closedIconOffset = d.isClosed ? 12 : 0; // Extra space if closed icon present
+              return paddingLeft + d.depth * 16 + toggleOffset + iconOffset + closedIconOffset;
             })
             .attr('y', lineSpacing + dataHeight / 2)
             .text((d) => d.title)
@@ -743,13 +783,32 @@ export default {
               moment(parseDateTime(endDate)).format('LTS');
           }
 
-          svg
+          const subheadingText = svg
             .select('#g_title')
             .append('text')
             .attr('x', paddingLeft)
             .attr('y', paddingTopHeading + 17)
             .text(subtitleText)
             .attr('class', 'subheading');
+
+          // Add metadata info on the same line as the time text
+          if (metadata && metadata.trim()) {
+            // Get the width of the subheading text to position metadata right after it
+            const subheadingWidth = subheadingText.node().getBBox().width;
+            const metadataX = paddingLeft + subheadingWidth + 15; // 15px gap after time text
+            
+            svg
+              .select('#g_title')
+              .append('text')
+              .attr('class', 'metadata-info')
+              .attr('x', metadataX)
+              .attr('y', paddingTopHeading + 17)
+              .text(metadata)
+              .attr('font-size', '11px')
+              .attr('fill', '#374151')
+              .attr('font-weight', '500')
+              .attr('font-family', 'system-ui, -apple-system, sans-serif');
+          }
 
           // create legend
           const legend = svg

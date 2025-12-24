@@ -46,6 +46,11 @@ export function getTaskFromGitLabIssue(gitlabIssue: GitLabIssue): Task {
     task.hasChildren = true;
   }
 
+  // Set closed state
+  if (gitlabIssue.state === 'closed') {
+    task.isClosed = true;
+  }
+
   return task;
 }
 

@@ -8,6 +8,7 @@ export interface GitLabIssue {
   description: string;
   due_date: string;
   milestone: GitLabMilestone | null;
+  state?: string; // 'opened' or 'closed'
   // Issue type: 'issue', 'incident', 'test_case', or 'task'
   issue_type?: 'issue' | 'incident' | 'test_case' | 'task';
   // Type field (alternative name in some API versions)
@@ -18,4 +19,9 @@ export interface GitLabIssue {
     count: number;
     completed_count: number;
   };
+  // Project references (used to identify parent projects for tasks)
+  references?: {
+    full: string; // e.g., "group/project#123"
+  };
+  project_id?: number;
 }

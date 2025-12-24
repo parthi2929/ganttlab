@@ -12,3 +12,4 @@ export * from './views/mine/ViewMine';
 export * from './views/project/ViewProject';
 export * from './views/repository/ViewRepository';
 export * from './views/milestone/ViewMilestone';
+export * from './views/assigned-to/ViewAssignedTo';

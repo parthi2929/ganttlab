@@ -211,6 +211,10 @@ export class GitLabHierarchyService {
   ): Promise<Map<string, WorkItemHierarchyWidget>> {
     const result = new Map<string, WorkItemHierarchyWidget>();
 
+    console.log(`\n🔍 GitLabHierarchyService.fetchHierarchyBatch`);
+    console.log(`   Project: ${projectPath}`);
+    console.log(`   IIDs to fetch: ${iids.join(', ')}`);
+
     try {
       const query = `
         query batchGetWorkItemHierarchy($fullPath: ID!, $iids: [String!]!) {
@@ -233,6 +237,8 @@ export class GitLabHierarchyService {
       `;
 
       const baseUrl = gateway.getUrl();
+      console.log(`   GraphQL endpoint: ${baseUrl}/api/graphql`);
+
       const { data } = await gateway.safeAxiosRequest<{
         data: WorkItemsResponse;
       }>({
@@ -247,24 +253,51 @@ export class GitLabHierarchyService {
         },
       });
 
+      console.log(`   ✅ GraphQL response received`);
+      console.log(`   Raw response:`, JSON.stringify(data, null, 2));
+
       if (data.data?.project?.workItems?.nodes) {
+        console.log(
+          `   Found ${data.data.project.workItems.nodes.length} work items in response`,
+        );
+
         // Process each work item in the response
         for (const workItem of data.data.project.workItems.nodes) {
+          console.log(`\n   WorkItem #${workItem.iid}: "${workItem.title}"`);
+
           if (workItem.widgets) {
+            console.log(`     Widgets count: ${workItem.widgets.length}`);
             for (const widget of workItem.widgets) {
               if (
                 widget.hasParent !== undefined ||
                 widget.hasChildren !== undefined
               ) {
+                console.log(`     ✓ Found hierarchy widget:`);
+                console.log(`       hasParent: ${widget.hasParent}`);
+                if (widget.parent) {
+                  console.log(`       parent.iid: ${widget.parent.iid}`);
+                  console.log(`       parent.title: ${widget.parent.title}`);
+                }
+                console.log(`       hasChildren: ${widget.hasChildren}`);
+
                 result.set(workItem.iid, widget);
                 break;
               }
             }
+          } else {
+            console.log(`     ⚠️ No widgets found for this work item`);
           }
         }
+      } else {
+        console.log(`   ⚠️ No work items in response or unexpected structure`);
+        console.log(`   data.data:`, data.data);
       }
     } catch (error) {
-      console.warn('Failed to batch fetch hierarchy:', error);
+      console.error('❌ Failed to batch fetch hierarchy:', error);
+      if (error instanceof Error) {
+        console.error('   Error message:', error.message);
+        console.error('   Error stack:', error.stack);
+      }
     }
 
     return result;

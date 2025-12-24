@@ -6,6 +6,7 @@
       :tasks="tasks"
       :searchTerm="searchTerm"
       :searchMode="searchMode"
+      :metadata="metadata"
     />
   </div>
 </template>
@@ -27,6 +28,11 @@ const mainState = getModule(MainModule);
 export default class TasksChartMediator extends Vue {
   @Prop() readonly tasks!: Array<Task>;
   @Prop() readonly chart!: string;
+  @Prop({ default: '' }) readonly metadata!: string;
+
+  mounted() {
+    console.log('📦 TasksChartMediator.vue - received metadata:', this.metadata);
+  }
 
   get chartComponent() {
     return `${this.chart}Chart`;
