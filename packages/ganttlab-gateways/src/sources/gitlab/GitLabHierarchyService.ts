@@ -267,27 +267,6 @@ export class GitLabHierarchyService {
 
     return result;
   }
-
-  /**
-   * Fallback: This method is deprecated as GitLab issue links API does not
-   * provide reliable parent-child relationships via link_type.
-   *
-   * The correct approach is to use GraphQL WorkItemWidgetHierarchy.
-   * This method returns empty results and exists only for backward compatibility.
-   */
-  async fetchLinksAsFallback(
-    gateway: GitLabGateway,
-    projectPath: string,
-    issueIid: string,
-  ): Promise<{
-    parent?: { iid: string; title: string; webUrl: string };
-    children: Array<{ iid: string; title: string; webUrl: string }>;
-  }> {
-    console.warn(
-      'fetchLinksAsFallback is deprecated. Use GraphQL WorkItemWidgetHierarchy instead.',
-    );
-    return { children: [] };
-  }
 }
 
 export const gitLabHierarchyService = new GitLabHierarchyService();

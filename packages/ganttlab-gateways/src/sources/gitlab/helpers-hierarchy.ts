@@ -320,38 +320,3 @@ export async function fetchChildrenForTask(
     return [];
   }
 }
-
-/**
- * Try to use fallback REST API to get hierarchy when GraphQL is unavailable
- *
- * @param gateway - GitLab gateway instance
- * @param projectPath - Full project path
- * @param tasks - Array of tasks to enrich
- */
-export async function enrichTasksWithHierarchyFallback(
-  gateway: GitLabGateway,
-  projectPath: string,
-  tasks: Task[],
-): Promise<void> {
-  for (const task of tasks) {
-    if (!task.iid) continue;
-
-    try {
-      const linkInfo = await gitLabHierarchyService.fetchLinksAsFallback(
-        gateway,
-        projectPath,
-        task.iid,
-      );
-
-      if (linkInfo.parent) {
-        task.parentIid = linkInfo.parent.iid;
-      }
-
-      if (linkInfo.children.length > 0) {
-        task.hasChildren = true;
-      }
-    } catch (error) {
-      // Silently continue
-    }
-  }
-}
