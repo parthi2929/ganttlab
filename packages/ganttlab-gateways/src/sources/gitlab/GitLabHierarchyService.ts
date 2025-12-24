@@ -25,7 +25,7 @@ interface WorkItemHierarchyWidget {
 }
 
 interface WorkItemResponse {
-  workspace: {
+  project: {
     workItem: {
       iid: string;
       title: string;
@@ -49,7 +49,7 @@ export class GitLabHierarchyService {
     try {
       const query = `
         query getWorkItemHierarchy($fullPath: ID!, $iid: String!) {
-          workspace: namespace(fullPath: $fullPath) {
+          project(fullPath: $fullPath) {
             workItem(iid: $iid) {
               iid
               title
@@ -79,9 +79,9 @@ export class GitLabHierarchyService {
         },
       });
 
-      if (data.data?.workspace?.workItem?.widgets) {
+      if (data.data?.project?.workItem?.widgets) {
         // Find the hierarchy widget
-        for (const widget of data.data.workspace.workItem.widgets) {
+        for (const widget of data.data.project.workItem.widgets) {
           if (
             widget.hasParent !== undefined ||
             widget.hasChildren !== undefined
@@ -115,7 +115,7 @@ export class GitLabHierarchyService {
     try {
       const query = `
         query getWorkItemChildren($fullPath: ID!, $iid: String!, $first: Int!, $after: String) {
-          workspace: namespace(fullPath: $fullPath) {
+          project(fullPath: $fullPath) {
             workItem(iid: $iid) {
               iid
               title
@@ -148,8 +148,8 @@ export class GitLabHierarchyService {
         },
       });
 
-      if (data.data?.workspace?.workItem?.widgets) {
-        for (const widget of data.data.workspace.workItem.widgets) {
+      if (data.data?.project?.workItem?.widgets) {
+        for (const widget of data.data.project.workItem.widgets) {
           if (widget.children) {
             return {
               children: widget.children.nodes,
@@ -223,7 +223,7 @@ export class GitLabHierarchyService {
 
       const query = `
         query batchGetWorkItemHierarchy($fullPath: ID!) {
-          workspace: namespace(fullPath: $fullPath) {
+          project(fullPath: $fullPath) {
             ${aliases.join('\n')}
           }
         }
@@ -231,7 +231,7 @@ export class GitLabHierarchyService {
 
       const { data } = await gateway.safeAxiosRequest<{
         data: {
-          workspace?: Record<string, { widgets?: WorkItemHierarchyWidget[] }>;
+          project?: Record<string, { widgets?: WorkItemHierarchyWidget[] }>;
         };
       }>({
         method: 'POST',
@@ -244,10 +244,10 @@ export class GitLabHierarchyService {
         },
       });
 
-      if (data.data?.workspace) {
+      if (data.data?.project) {
         // Process each aliased response
         for (const iid of iids) {
-          const workItem = data.data.workspace[`issue_${iid}`];
+          const workItem = data.data.project[`issue_${iid}`];
           if (workItem?.widgets) {
             for (const widget of workItem.widgets) {
               if (
@@ -269,8 +269,11 @@ export class GitLabHierarchyService {
   }
 
   /**
-   * Fallback: Use REST API /issues/:id/links to infer hierarchy
-   * This is used when GraphQL is not available (older GitLab versions)
+   * Fallback: This method is deprecated as GitLab issue links API does not
+   * provide reliable parent-child relationships via link_type.
+   *
+   * The correct approach is to use GraphQL WorkItemWidgetHierarchy.
+   * This method returns empty results and exists only for backward compatibility.
    */
   async fetchLinksAsFallback(
     gateway: GitLabGateway,
@@ -280,38 +283,10 @@ export class GitLabHierarchyService {
     parent?: { iid: string; title: string; webUrl: string };
     children: Array<{ iid: string; title: string; webUrl: string }>;
   }> {
-    try {
-      const encodedProject = encodeURIComponent(projectPath);
-      interface LinkItem {
-        iid: string;
-        title: string;
-        web_url: string;
-        link_type: string;
-      }
-      const { data } = await gateway.safeAxiosRequest<LinkItem[]>({
-        method: 'GET',
-        url: `/projects/${encodedProject}/issues/${issueIid}/links`,
-      });
-
-      const parent = data.find((link: LinkItem) => link.link_type === 'blocks');
-      const children = data
-        .filter((link: LinkItem) => link.link_type === 'is_blocked_by')
-        .map((link: LinkItem) => ({
-          iid: link.iid,
-          title: link.title,
-          webUrl: link.web_url,
-        }));
-
-      return {
-        parent: parent
-          ? { iid: parent.iid, title: parent.title, webUrl: parent.web_url }
-          : undefined,
-        children,
-      };
-    } catch (error) {
-      console.warn(`Failed to fetch links for issue ${issueIid}:`, error);
-      return { children: [] };
-    }
+    console.warn(
+      'fetchLinksAsFallback is deprecated. Use GraphQL WorkItemWidgetHierarchy instead.',
+    );
+    return { children: [] };
   }
 }
 

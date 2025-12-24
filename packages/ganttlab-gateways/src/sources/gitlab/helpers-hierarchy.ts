@@ -3,26 +3,15 @@ import { GitLabGateway } from './GitLabGateway';
 import { gitLabHierarchyService } from './GitLabHierarchyService';
 
 /**
- * Issue link types that indicate parent-child relationships
- * - 'is_blocked_by' typically means this issue is a child/subtask
- * - 'blocks' typically means this issue is a parent
- */
-interface IssueLink {
-  iid: number;
-  title: string;
-  web_url: string;
-  link_type: 'relates_to' | 'blocks' | 'is_blocked_by';
-}
-
-/**
- * Build parent-child hierarchy using GitLab's issue_type field
+ * Build parent-child hierarchy using GitLab's issue_type and has_tasks fields
  *
  * In GitLab:
- * - issue_type='issue' = PARENT (root level)
- * - issue_type='task' = CHILD (belongs under an issue)
+ * - issue_type='issue' with has_tasks=true = PARENT (has children)
+ * - issue_type='issue' with has_tasks=false = ISSUE without children (not a parent)
+ * - issue_type='task' = CHILD (belongs under an issue, should not be in root list)
  *
- * Tasks are children of Issues. We match them by finding Issues that have
- * tasks (has_tasks=true) and linking Tasks to their parent Issues.
+ * This fallback uses title matching to infer parent-child relationships when
+ * GraphQL hierarchy info is unavailable. It's not perfect but better than nothing.
  *
  * @param tasks - Array of tasks to analyze and update
  */
@@ -36,22 +25,26 @@ function internalBuildHierarchyFromIssueType(tasks: Task[]): void {
 
   for (const task of tasks) {
     if (task.isGitLabTask) {
+      // issue_type='task' - these are children
       gitlabTasks.push(task);
       console.log(`  Task (iid:${task.iid}): "${task.title}"`);
-    } else {
+    } else if (task.isGitLabIssue) {
+      // issue_type='issue' - potential parents
       issues.push(task);
       if (task.hasChildren) {
-        console.log(`  Issue with children (iid:${task.iid}): "${task.title}"`);
+        // has_tasks=true means it has children
+        console.log(
+          `  Issue with children (iid:${task.iid}, has_tasks=true): "${task.title}"`,
+        );
       }
     }
   }
 
   console.log(`Found ${issues.length} Issues, ${gitlabTasks.length} Tasks`);
 
-  // For each Task, find its parent Issue
-  // GitLab Tasks belong to Issues - we need to match them
-  // Since the API doesn't directly give us parent_id, we use naming pattern as a hint
-  // BUT the issue_type is the source of truth for what IS a task vs issue
+  // For each Task (issue_type='task'), try to find its parent Issue
+  // Since GraphQL is unavailable, we use title matching as a heuristic
+  // This is a best-effort approach - parent info should ideally come from GraphQL
 
   for (const gitlabTask of gitlabTasks) {
     if (!gitlabTask.iid) continue;
@@ -60,13 +53,17 @@ function internalBuildHierarchyFromIssueType(tasks: Task[]): void {
 
     // Find the Issue that this Task belongs to
     // Strategy: Find an Issue whose title is a prefix of this Task's title
-    // OR find an Issue that has_tasks=true and matches by some criteria
+    // This works when tasks are named like "Parent Issue - Subtask 1"
 
     let bestMatch: Task | null = null;
     let bestMatchLength = 0;
 
     for (const issue of issues) {
       if (!issue.iid) continue;
+
+      // Skip issues that don't have has_tasks=true
+      // (they shouldn't have children)
+      if (!issue.hasChildren) continue;
 
       const issueTitle = issue.title.trim().toLowerCase();
 
@@ -89,14 +86,13 @@ function internalBuildHierarchyFromIssueType(tasks: Task[]): void {
     if (bestMatch) {
       // Link Task to its parent Issue
       gitlabTask.parentIid = bestMatch.iid;
-      bestMatch.hasChildren = true;
 
       console.log(
         `✓ Linked Task "${gitlabTask.title}" (iid:${gitlabTask.iid}) → Issue "${bestMatch.title}" (iid:${bestMatch.iid})`,
       );
     } else {
       console.log(
-        `⚠ No parent found for Task "${gitlabTask.title}" (iid:${gitlabTask.iid})`,
+        `⚠ No parent found for Task "${gitlabTask.title}" (iid:${gitlabTask.iid}) - needs GraphQL`,
       );
     }
   }
@@ -114,13 +110,21 @@ function internalBuildHierarchyFromIssueType(tasks: Task[]): void {
   );
   console.log(
     `Child tasks (${childTasks.length}):`,
-    childTasks.map((t) => t.title),
+    childTasks.map((t) => t.title).slice(0, 5),
   );
 }
 
 /**
- * Enrich tasks with hierarchy information using GitLab Issue Links REST API
- * This function fetches parent/child relationships for all tasks
+ * Enrich tasks with hierarchy information using GitLab GraphQL WorkItemWidgetHierarchy
+ *
+ * This function uses the correct GitLab API approach to fetch parent/child relationships:
+ * 1. Primary: GraphQL WorkItemWidgetHierarchy - provides accurate parent/child data
+ * 2. Fallback: issue_type and has_tasks fields with title matching heuristics
+ *
+ * GitLab hierarchy rules:
+ * - issue_type='issue' with has_tasks=true → parent issue (has children)
+ * - issue_type='issue' with has_tasks=false → standalone issue (no children)
+ * - issue_type='task' → child task (belongs to a parent issue, should not be in root list)
  *
  * @param gateway - GitLab gateway instance
  * @param projectPath - Full project path (e.g., "group/project")
@@ -156,52 +160,35 @@ export async function enrichTasksWithHierarchy(
   const childrenMap = new Map<string, Set<string>>(); // parentIid -> Set of childIids
 
   try {
-    // First, try the REST API Issue Links approach (more reliable)
-    const encodedProject = encodeURIComponent(projectPath);
-
-    // Fetch links for each issue
-    await Promise.all(
-      tasks.map(async (task) => {
-        if (!task.iid) return;
-
-        try {
-          const { data } = await gateway.safeAxiosRequest<IssueLink[]>({
-            method: 'GET',
-            url: `/projects/${encodedProject}/issues/${task.iid}/links`,
-          });
-
-          for (const link of data) {
-            const linkedIid = String(link.iid);
-
-            // Only consider links to issues that are in our current list
-            if (!iidSet.has(linkedIid)) continue;
-
-            // 'blocks' means this issue blocks another -> this is a parent
-            // 'is_blocked_by' means this issue is blocked by another -> this is a child
-            if (link.link_type === 'blocks') {
-              // Current task is the PARENT of the linked issue
-              if (!childrenMap.has(task.iid)) {
-                childrenMap.set(task.iid, new Set());
-              }
-              const children = childrenMap.get(task.iid);
-              if (children) children.add(linkedIid);
-              parentMap.set(linkedIid, task.iid);
-            } else if (link.link_type === 'is_blocked_by') {
-              // Current task is a CHILD of the linked issue
-              parentMap.set(task.iid, linkedIid);
-              if (!childrenMap.has(linkedIid)) {
-                childrenMap.set(linkedIid, new Set());
-              }
-              const parentChildren = childrenMap.get(linkedIid);
-              if (parentChildren) parentChildren.add(task.iid);
-            }
-          }
-        } catch (error) {
-          // Individual link fetch failed, continue with others
-          console.warn(`Failed to fetch links for issue ${task.iid}:`, error);
-        }
-      }),
+    // Use GraphQL to fetch hierarchy via WorkItemWidgetHierarchy
+    // This is the correct way to get parent-child relationships in GitLab
+    const hierarchyMap = await gitLabHierarchyService.batchFetchHierarchy(
+      gateway,
+      projectPath,
+      iids,
     );
+
+    // Build parent and children maps from GraphQL results
+    hierarchyMap.forEach((hierarchyInfo, iid) => {
+      // Set parent relationship
+      if (hierarchyInfo.hasParent && hierarchyInfo.parent) {
+        const parentIid = hierarchyInfo.parent.iid;
+        parentMap.set(iid, parentIid);
+
+        // Add to parent's children set
+        if (!childrenMap.has(parentIid)) {
+          childrenMap.set(parentIid, new Set());
+        }
+        childrenMap.get(parentIid)?.add(iid);
+      }
+
+      // Track children
+      if (hierarchyInfo.hasChildren) {
+        if (!childrenMap.has(iid)) {
+          childrenMap.set(iid, new Set());
+        }
+      }
+    });
 
     // Apply hierarchy information to tasks
     for (const task of tasks) {
@@ -213,17 +200,23 @@ export async function enrichTasksWithHierarchy(
         task.parentIid = parentIid;
       }
 
-      // Set children flag
+      // Set children flag from GraphQL data
+      // NOTE: Don't overwrite existing hasChildren - it may already be set from has_tasks field
       const children = childrenMap.get(task.iid);
       if (children && children.size > 0) {
         task.hasChildren = true;
       }
+      // If GraphQL didn't provide child info, preserve existing hasChildren from has_tasks
     }
+
+    // Count tasks that actually have children (from GraphQL or has_tasks field)
+    const tasksWithChildrenCount = tasks.filter((t) => t.hasChildren).length;
 
     console.log('Hierarchy enrichment complete:', {
       totalTasks: tasks.length,
       tasksWithParent: Array.from(parentMap.keys()).length,
-      tasksWithChildren: Array.from(childrenMap.keys()).filter(
+      tasksWithChildren: tasksWithChildrenCount,
+      tasksWithChildrenFromGraphQL: Array.from(childrenMap.keys()).filter(
         (k) => (childrenMap.get(k)?.size ?? 0) > 0,
       ).length,
       parentChildRelations: Array.from(parentMap.entries()).map(
@@ -231,41 +224,21 @@ export async function enrichTasksWithHierarchy(
       ),
     });
 
-    // If no relationships found via links, build hierarchy using issue_type
-    // Issues (issue_type='issue') are parents, Tasks (issue_type='task') are children
+    // If no relationships found via GraphQL, use issue_type and has_tasks as fallback
+    // Issues (issue_type='issue' with has_tasks=true) are parents
+    // Tasks (issue_type='task') are children
     if (parentMap.size === 0) {
       console.log(
-        'No issue links found, building hierarchy from issue_type...',
+        'No hierarchy found via GraphQL, using issue_type and has_tasks...',
       );
       internalBuildHierarchyFromIssueType(tasks);
     }
   } catch (error) {
-    console.warn('Failed to enrich tasks with hierarchy via REST API:', error);
+    console.warn('Failed to enrich tasks with hierarchy via GraphQL:', error);
 
-    // Fallback to GraphQL approach
-    try {
-      const hierarchyMap = await gitLabHierarchyService.batchFetchHierarchy(
-        gateway,
-        projectPath,
-        iids,
-      );
-
-      for (const task of tasks) {
-        if (!task.iid) continue;
-
-        const hierarchyInfo = hierarchyMap.get(task.iid);
-        if (hierarchyInfo) {
-          if (hierarchyInfo.hasParent && hierarchyInfo.parent) {
-            task.parentIid = hierarchyInfo.parent.iid;
-          }
-          if (hierarchyInfo.hasChildren) {
-            task.hasChildren = true;
-          }
-        }
-      }
-    } catch (graphqlError) {
-      console.warn('GraphQL fallback also failed:', graphqlError);
-    }
+    // Fallback to issue_type and has_tasks approach
+    console.log('Using issue_type and has_tasks as fallback...');
+    internalBuildHierarchyFromIssueType(tasks);
   }
 }
 

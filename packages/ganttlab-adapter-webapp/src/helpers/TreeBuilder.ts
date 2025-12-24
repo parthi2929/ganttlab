@@ -68,6 +68,15 @@ export class TreeBuilder {
 
       // If task has no parent or parent doesn't exist in our list, it's a root
       if (!task.parentIid || !taskMap.has(task.parentIid)) {
+        // IMPORTANT: GitLab Tasks (issue_type='task') should NEVER be root-level items
+        // They are always children of Issues, even if parent info is missing
+        if (task.isGitLabTask) {
+          console.warn(
+            `Task "${task.title}" (${task.iid}) has no parent - hiding from root list`,
+          );
+          continue;
+        }
+
         task.depth = 0;
         task.isVisible = true;
         rootTasks.push(task);
