@@ -681,7 +681,7 @@ export default {
               .append('g')
               .attr('class', 'expand-all-button')
               .attr('cursor', 'pointer')
-              .attr('transform', 'translate(' + paddingLeft + ',' + (paddingTopHeading - 5) + ')');
+              .attr('transform', 'translate(' + paddingLeft + ',' + (paddingTopHeading - 20) + ')');
             
             expandAllButton
               .append('rect')
