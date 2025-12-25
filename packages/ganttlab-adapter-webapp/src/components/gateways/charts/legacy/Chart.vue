@@ -532,23 +532,36 @@ export default {
           // add data series
           g.selectAll('rect')
             .data(function (d) {
-              return d.dispData;
+              // Attach parent isDimmed property to each bar data point
+              return d.dispData.map(function (barData) {
+                return {
+                  barData: barData,
+                  isDimmed: d.isDimmed
+                };
+              });
             })
             .enter()
             .append('rect')
             .attr('x', function (d) {
-              return xScale(d[0]);
+              return xScale(d.barData[0]);
             })
             .attr('y', lineSpacing)
             .attr('width', function (d) {
-              return xScale(d[2]) - xScale(d[0]);
+              return xScale(d.barData[2]) - xScale(d.barData[0]);
             })
             .attr('height', dataHeight)
             .attr('class', function (d) {
-              if (d[1] === 1) {
-                return 'rect_has_data';
+              let className = '';
+              if (d.barData[1] === 1) {
+                className = 'rect_has_data';
+              } else {
+                className = 'rect_has_no_data';
               }
-              return 'rect_has_no_data';
+              // Add dimmed class if the task is dimmed
+              if (d.isDimmed) {
+                className += ' rect_dimmed';
+              }
+              return className;
             })
             .on('mouseover', function (d) {
               const matrix = this.getScreenCTM().translate(
@@ -559,7 +572,7 @@ export default {
               div
                 .html(function () {
                   let output = '';
-                  if (d[1] === 1) {
+                  if (d.barData[1] === 1) {
                     output =
                       '<i class="fa fa-fw fa-check taskTooltip_has_data"></i>';
                   } else {
@@ -567,32 +580,32 @@ export default {
                       '<i class="fa fa-fw fa-times taskTooltip_has_no_data"></i>';
                   }
                   if (isDateOnlyFormat) {
-                    if (d[2] > d3.time.second.offset(d[0], 86400)) {
+                    if (d.barData[2] > d3.time.second.offset(d.barData[0], 86400)) {
                       output =
                         output +
-                        moment(parseDate(d[0])).format('l') +
+                        moment(parseDate(d.barData[0])).format('l') +
                         ' - ' +
-                        moment(parseDate(d[2])).format('l');
+                        moment(parseDate(d.barData[2])).format('l');
                     } else {
-                      output = output + moment(parseDate(d[0])).format('l');
+                      output = output + moment(parseDate(d.barData[0])).format('l');
                     }
                   } else {
-                    if (d[2] > d3.time.second.offset(d[0], 86400)) {
+                    if (d.barData[2] > d3.time.second.offset(d.barData[0], 86400)) {
                       output =
                         output +
-                        moment(parseDateTime(d[0])).format('l') +
+                        moment(parseDateTime(d.barData[0])).format('l') +
                         ' ' +
-                        moment(parseDateTime(d[0])).format('LTS') +
+                        moment(parseDateTime(d.barData[0])).format('LTS') +
                         ' - ' +
-                        moment(parseDateTime(d[2])).format('l') +
+                        moment(parseDateTime(d.barData[2])).format('l') +
                         ' ' +
-                        moment(parseDateTime(d[2])).format('LTS');
+                        moment(parseDateTime(d.barData[2])).format('LTS');
                     } else {
                       output =
                         output +
-                        moment(parseDateTime(d[0])).format('LTS') +
+                        moment(parseDateTime(d.barData[0])).format('LTS') +
                         ' - ' +
-                        moment(parseDateTime(d[2])).format('LTS');
+                        moment(parseDateTime(d.barData[2])).format('LTS');
                     }
                   }
                   return output;
@@ -934,6 +947,11 @@ export default {
 
   .rect_has_no_data:hover {
     @apply fill-current text-red-700;
+  }
+
+  .rect_dimmed {
+    /* dimmed bars for non-matching ancestors */
+    opacity: 0.3;
   }
 
   .taskTooltip_has_data {

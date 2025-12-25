@@ -17,6 +17,7 @@ This fork extends the original GanttLab with enhanced visualization and filterin
 - **GraphQL Hierarchy Support**: Native support for GitLab's WorkItemWidgetHierarchy API for accurate parent-child relationships
 - **Smart Filtering with Context**: When filtering, ancestor issues are retained and dimmed to provide context when descendants match
 - **Keyword Highlighting**: Visual highlighting of search matches in issue titles during active filtering
+- **Dimmed Gantt Bars**: Gantt chart bars are automatically dimmed for greyed-out items to reduce visual clutter during filtering
 - **Tree State Persistence**: Expansion/collapse state persists across page refreshes within the same browser session
 - **Circular Reference Protection**: Automatic detection and prevention of infinite loops in issue hierarchies
 - **GitLab Task Type Support**: Proper handling of GitLab's Task work item type, ensuring tasks only appear as children of issues
